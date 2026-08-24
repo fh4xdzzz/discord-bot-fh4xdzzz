@@ -2234,6 +2234,32 @@ async def my_subscriptions(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+@bot.tree.command(name='send_message', description='Envía un mensaje anónimo a un canal específico')
+@discord.app_commands.describe(
+    channel='Canal donde enviar el mensaje',
+    message='Mensaje a enviar',
+    mention_everyone='¿Mencionar @everyone?'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def send_message(interaction: discord.Interaction, channel: discord.TextChannel, message: str, mention_everyone: bool = False):
+    try:
+        # Verificar que el bot tenga permisos en el canal
+        bot_permissions = channel.permissions_for(interaction.guild.me)
+        if not bot_permissions.send_messages:
+            await interaction.response.send_message('❌ El bot no tiene permisos para enviar mensajes en ese canal', ephemeral=True)
+            return
+
+        # Enviar mensaje anónimo
+        if mention_everyone:
+            await channel.send(f'@everyone {message}')
+        else:
+            await channel.send(message)
+
+        await interaction.response.send_message(f'✅ Mensaje enviado anónimamente a {channel.mention}', ephemeral=True)
+        print(f'[Mensaje Anónimo] Mensaje enviado a {channel.name} por {interaction.user.name}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+
 @bot.tree.command(name='send_announcement', description='Envía un anuncio al canal de notificaciones')
 @discord.app_commands.describe(
     message='Mensaje del anuncio',
