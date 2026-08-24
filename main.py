@@ -2598,6 +2598,18 @@ async def ban(interaction: discord.Interaction, member: discord.Member):
     except Exception as e:
         await interaction.response.send_message(f'❌ Error: {e}')
 
+@bot.tree.command(name='sync_commands', description='Fuerza la sincronización de comandos')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def sync_commands(interaction: discord.Interaction):
+    try:
+        # Sincronizar comandos globalmente
+        synced = await bot.tree.sync()
+        await interaction.response.send_message(f'✅ Sincronizados {len(synced)} comandos globalmente', ephemeral=True)
+        print(f'[Sincronización] Comandos sincronizados: {len(synced)}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al sincronizar: {e}', ephemeral=True)
+        print(f'[Sincronización] Error: {e}')
+
 
 # Manejador de errores global para comandos
 @bot.tree.error
