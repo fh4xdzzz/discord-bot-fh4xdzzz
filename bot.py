@@ -1140,7 +1140,11 @@ async def assign_auto_roles(member):
 # Comandos slash
 @bot.tree.command(name='ping', description='Comprueba la latencia del bot')
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message(f'🏓 Pong! {round(bot.latency * 1000)}ms')
+    try:
+        await interaction.response.send_message(f'🏓 Pong! {round(bot.latency * 1000)}ms')
+    except discord.errors.NotFound:
+        # La interacción expiró o el bot se reinició
+        pass
 
 # Sistema de paginación para ayuda
 class HelpView(discord.ui.View):
