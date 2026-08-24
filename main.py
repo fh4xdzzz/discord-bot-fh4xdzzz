@@ -710,6 +710,21 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
+    # Log de mensaje enviado (nuevo)
+    if not message.author.bot:
+        await send_log(
+            guild=message.guild,
+            title='💬 Mensaje Enviado',
+            description=f'{message.author.mention} envió un mensaje en {message.channel.mention}',
+            color=0x2ecc71,
+            fields=[
+                {'name': 'Usuario', 'value': message.author.name, 'inline': True},
+                {'name': 'Canal', 'value': message.channel.name, 'inline': True},
+                {'name': 'Contenido', 'value': message.content[:200] + '...' if len(message.content) > 200 else message.content, 'inline': False}
+            ],
+            author={'name': message.author.name, 'icon_url': message.author.display_avatar.url}
+        )
+
 # Sistema de auto-protección
 async def check_dangerous_content(message):
     content = message.content.lower()
@@ -756,6 +771,9 @@ async def check_dangerous_content(message):
 # Sistema anti-spam
 spam_detection = {}  # Para detectar spam rápido
 spam_cleanup = {}  # Para limpiar mensajes viejos
+
+# Sistema de tracking de tiempo en canales de voz
+voice_join_times = {}  # {user_id: {guild_id: {channel_id: join_time}}}
 
 async def check_spam(message):
     user_id = str(message.author.id)
@@ -1242,11 +1260,23 @@ async def on_invite_use(invite):
         author={'name': invite.inviter.name, 'icon_url': invite.inviter.display_avatar.url} if invite.inviter else None
     )
 
-# Evento de movimiento de voz (extremadamente detallado)
+# Evento de movimiento de voz (extremadamente detallado con tiempo)
 @bot.event
 async def on_voice_state_update(member, before, after):
     # Usuario se une a un canal de voz
     if after.channel and not before.channel:
+        # Registrar tiempo de entrada
+        user_id = str(member.id)
+        guild_id = str(member.guild.id)
+        channel_id = str(after.channel.id)
+
+        if user_id not in voice_join_times:
+            voice_join_times[user_id] = {}
+        if guild_id not in voice_join_times[user_id]:
+            voice_join_times[user_id][guild_id] = {}
+
+        voice_join_times[user_id][guild_id][channel_id] = datetime.now()
+
         await send_log(
             guild=member.guild,
             title='🎤 Usuario se unió a canal de voz',
@@ -1255,13 +1285,39 @@ async def on_voice_state_update(member, before, after):
             fields=[
                 {'name': 'Usuario', 'value': member.name, 'inline': True},
                 {'name': 'Canal', 'value': after.channel.name, 'inline': True},
-                {'name': 'Miembros en canal', 'value': str(len(after.channel.members)), 'inline': True}
+                {'name': 'Miembros en canal', 'value': str(len(after.channel.members)), 'inline': True},
+                {'name': 'Hora de entrada', 'value': datetime.now().strftime('%H:%M:%S'), 'inline': True}
             ],
             author={'name': member.name, 'icon_url': member.display_avatar.url}
         )
 
     # Usuario sale de un canal de voz
     elif before.channel and not after.channel:
+        # Calcular tiempo en el canal
+        user_id = str(member.id)
+        guild_id = str(member.guild.id)
+        channel_id = str(before.channel.id)
+
+        time_in_channel = "N/A"
+        if user_id in voice_join_times and guild_id in voice_join_times[user_id] and channel_id in voice_join_times[user_id][guild_id]:
+            join_time = voice_join_times[user_id][guild_id][channel_id]
+            time_spent = datetime.now() - join_time
+
+            # Formatear el tiempo
+            hours = int(time_spent.total_seconds() // 3600)
+            minutes = int((time_spent.total_seconds() % 3600) // 60)
+            seconds = int(time_spent.total_seconds() % 60)
+
+            if hours > 0:
+                time_in_channel = f"{hours}h {minutes}m {seconds}s"
+            elif minutes > 0:
+                time_in_channel = f"{minutes}m {seconds}s"
+            else:
+                time_in_channel = f"{seconds}s"
+
+            # Limpiar el registro
+            del voice_join_times[user_id][guild_id][channel_id]
+
         await send_log(
             guild=member.guild,
             title='🎤 Usuario salió de canal de voz',
@@ -1270,13 +1326,47 @@ async def on_voice_state_update(member, before, after):
             fields=[
                 {'name': 'Usuario', 'value': member.name, 'inline': True},
                 {'name': 'Canal anterior', 'value': before.channel.name, 'inline': True},
-                {'name': 'Tiempo en canal', 'value': 'N/A', 'inline': True}
+                {'name': 'Tiempo en canal', 'value': time_in_channel, 'inline': True}
             ],
             author={'name': member.name, 'icon_url': member.display_avatar.url}
         )
 
     # Usuario cambia de canal de voz
     elif before.channel and after.channel and before.channel != after.channel:
+        # Calcular tiempo en el canal anterior
+        user_id = str(member.id)
+        guild_id = str(member.guild.id)
+        old_channel_id = str(before.channel.id)
+        new_channel_id = str(after.channel.id)
+
+        time_in_old_channel = "N/A"
+        if user_id in voice_join_times and guild_id in voice_join_times[user_id] and old_channel_id in voice_join_times[user_id][guild_id]:
+            join_time = voice_join_times[user_id][guild_id][old_channel_id]
+            time_spent = datetime.now() - join_time
+
+            # Formatear el tiempo
+            hours = int(time_spent.total_seconds() // 3600)
+            minutes = int((time_spent.total_seconds() % 3600) // 60)
+            seconds = int(time_spent.total_seconds() % 60)
+
+            if hours > 0:
+                time_in_old_channel = f"{hours}h {minutes}m {seconds}s"
+            elif minutes > 0:
+                time_in_old_channel = f"{minutes}m {seconds}s"
+            else:
+                time_in_old_channel = f"{seconds}s"
+
+            # Limpiar el registro del canal anterior
+            del voice_join_times[user_id][guild_id][old_channel_id]
+
+        # Registrar tiempo de entrada al nuevo canal
+        if user_id not in voice_join_times:
+            voice_join_times[user_id] = {}
+        if guild_id not in voice_join_times[user_id]:
+            voice_join_times[user_id][guild_id] = {}
+
+        voice_join_times[user_id][guild_id][new_channel_id] = datetime.now()
+
         await send_log(
             guild=member.guild,
             title='🎤 Usuario cambió de canal de voz',
@@ -1285,7 +1375,8 @@ async def on_voice_state_update(member, before, after):
             fields=[
                 {'name': 'Usuario', 'value': member.name, 'inline': True},
                 {'name': 'Canal anterior', 'value': before.channel.name, 'inline': True},
-                {'name': 'Canal nuevo', 'value': after.channel.name, 'inline': True}
+                {'name': 'Canal nuevo', 'value': after.channel.name, 'inline': True},
+                {'name': 'Tiempo en canal anterior', 'value': time_in_old_channel, 'inline': True}
             ],
             author={'name': member.name, 'icon_url': member.display_avatar.url}
         )
@@ -1379,24 +1470,24 @@ async def on_reaction_remove(reaction, user):
         author={'name': user.name, 'icon_url': user.display_avatar.url}
     )
 
-# Evento de usuario escribiendo
-@bot.event
-async def on_typing(channel, user, when):
-    if user.bot:
-        return
-
-    await send_log(
-        guild=channel.guild,
-        title='⌨️ Usuario Escribiendo',
-        description=f'{user.mention} está escribiendo en {channel.mention}',
-        color=0x95a5a6,
-        fields=[
-            {'name': 'Usuario', 'value': user.name, 'inline': True},
-            {'name': 'Canal', 'value': channel.name, 'inline': True},
-            {'name': 'Hora', 'value': when.strftime('%H:%M:%S'), 'inline': True}
-        ],
-        author={'name': user.name, 'icon_url': user.display_avatar.url}
-    )
+# Evento de usuario escribiendo (ELIMINADO SEGÚN SOLICITUD)
+# @bot.event
+# async def on_typing(channel, user, when):
+#     if user.bot:
+#         return
+#
+#     await send_log(
+#         guild=channel.guild,
+#         title='⌨️ Usuario Escribiendo',
+#         description=f'{user.mention} está escribiendo en {channel.mention}',
+#         color=0x95a5a6,
+#         fields=[
+#             {'name': 'Usuario', 'value': user.name, 'inline': True},
+#             {'name': 'Canal', 'value': channel.name, 'inline': True},
+#             {'name': 'Hora', 'value': when.strftime('%H:%M:%S'), 'inline': True}
+#         ],
+#         author={'name': user.name, 'icon_url': user.display_avatar.url}
+#     )
 
 # Evento de cambio de presencia (estado/juego)
 @bot.event
@@ -1722,8 +1813,8 @@ class HelpView(discord.ui.View):
                 'emoji': '📜',
                 'color': 0x9b59b6,
                 'commands': [
-                    {'name': 'Logs de Voz', 'desc': 'Registra todos los movimientos de voz'},
-                    {'name': 'Logs de Mensajes', 'desc': 'Registra edición y eliminación de mensajes'},
+                    {'name': 'Logs de Voz', 'desc': 'Registra movimientos de voz con tiempo'},
+                    {'name': 'Logs de Mensajes', 'desc': 'Registra mensajes enviados, editados y eliminados'},
                     {'name': 'Logs de Reacciones', 'desc': 'Registra todas las reacciones'},
                     {'name': 'Logs de Estados', 'desc': 'Registra cambios de estado y actividad'},
                     {'name': 'Logs de Perfil', 'desc': 'Registra cambios de nombre y avatar'},
