@@ -36,7 +36,11 @@ def load_data():
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except json.JSONDecodeError as e:
+            print(f'[Error] Error al decodificar JSON: {e}. Creando datos por defecto.')
+            return create_default_data()
+        except Exception as e:
+            print(f'[Error] Error al cargar datos: {e}. Creando datos por defecto.')
             return create_default_data()
     return create_default_data()
 
@@ -62,6 +66,7 @@ def create_default_data():
             'giveaway_channel': None,
             'giveaway_announcement_channel': None,
             'notifications_channel': None,
+            'log_channel': None,
             'notification_roles': {
                 'streams': None,
                 'giveaways': None,
@@ -73,11 +78,85 @@ def create_default_data():
         'user_notifications': {}
     }
 
+def validate_data():
+    """Asegura que los datos tengan la estructura correcta"""
+    required_keys = {
+        'users': dict,
+        'warns': dict,
+        'tickets': dict,
+        'banned_words': list,
+        'config': dict,
+        'giveaways': dict,
+        'user_notifications': dict
+    }
+
+    required_config_keys = {
+        'level_channel': (int, type(None)),
+        'ticket_category': (int, type(None)),
+        'welcome_channel': (int, type(None)),
+        'ranking_channel': (int, type(None)),
+        'ranking_message_id': (int, type(None)),
+        'stream_channel': (int, type(None)),
+        'streamers': list,
+        'auto_roles': list,
+        'verification_channel': (int, type(None)),
+        'verification_message_id': (int, type(None)),
+        'verification_role': (int, type(None)),
+        'verified_users': list,
+        'giveaway_channel': (int, type(None)),
+        'giveaway_announcement_channel': (int, type(None)),
+        'notifications_channel': (int, type(None)),
+        'log_channel': (int, type(None)),
+        'notification_roles': dict
+    }
+
+    # Validar estructura principal
+    for key, expected_type in required_keys.items():
+        if key not in data:
+            print(f'[Validación] Campo faltante: {key}, agregando valor por defecto')
+            data[key] = required_keys[key]() if callable(required_keys[key]) else required_keys[key]
+        elif not isinstance(data[key], expected_type):
+            print(f'[Validación] Campo {key} tiene tipo incorrecto, corrigiendo')
+            data[key] = required_keys[key]() if callable(required_keys[key]) else required_keys[key]
+
+    # Validar configuración
+    if 'config' not in data:
+        data['config'] = {}
+
+    for key, expected_types in required_config_keys.items():
+        if key not in data['config']:
+            print(f'[Validación] Campo de configuración faltante: {key}, agregando valor por defecto')
+            if isinstance(expected_types, type):
+                data['config'][key] = expected_types() if expected_types != type(None) else None
+            else:
+                data['config'][key] = expected_types[0]() if expected_types[0] != type(None) else None
+        elif not isinstance(data['config'][key], expected_types):
+            print(f'[Validación] Campo de configuración {key} tiene tipo incorrecto, corrigiendo')
+            if isinstance(expected_types, type):
+                data['config'][key] = expected_types() if expected_types != type(None) else None
+            else:
+                data['config'][key] = expected_types[0]() if expected_types[0] != type(None) else None
+
+    # Validar notification_roles
+    if 'notification_roles' in data['config']:
+        required_notification_roles = ['streams', 'giveaways', 'announcements', 'events']
+        for role_type in required_notification_roles:
+            if role_type not in data['config']['notification_roles']:
+                data['config']['notification_roles'][role_type] = None
+
+    save_data()
+    print('[Validación] Datos validados y corregidos correctamente')
+
 def save_data():
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    try:
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f'[Error] Error al guardar datos: {e}')
+        raise
 
 data = load_data()
+validate_data()  # Validar y corregir estructura de datos
 
 # Sistema de ranking
 ranking_message_id = data['config'].get('ranking_message_id')
@@ -119,32 +198,47 @@ async def send_log(guild, title, description, color=0x3498db, fields=None, autho
     if not log_channel_id:
         print(f'[Logs] Canal de logs no configurado. Evento: {title}')
         return
-    
+
     try:
         log_channel = bot.get_channel(log_channel_id)
         if not log_channel:
             print(f'[Logs] Canal de logs no encontrado. ID: {log_channel_id}. Evento: {title}')
             return
-        
+
+        # Verificar permisos del bot en el canal
+        bot_permissions = log_channel.permissions_for(guild.me if guild else log_channel.guild.me)
+        if not bot_permissions.send_messages or not bot_permissions.embed_links:
+            print(f'[Logs] El bot no tiene permisos para enviar mensajes en el canal de logs. Evento: {title}')
+            return
+
         embed = discord.Embed(
             title=title,
             description=description,
             color=color,
             timestamp=datetime.now()
         )
-        
+
         if fields:
             for field in fields:
                 embed.add_field(name=field['name'], value=field['value'], inline=field.get('inline', False))
-        
+
         if author:
             embed.set_author(name=author['name'], icon_url=author.get('icon_url'))
-        
+
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
-        
-        embed.set_footer(text=f'Sistema de Logs - {guild.name}')
-        
+
+        if guild:
+            embed.set_footer(text=f'Sistema de Logs - {guild.name}')
+
+        await log_channel.send(embed=embed)
+        print(f'[Logs] Log enviado exitosamente: {title}')
+    except discord.errors.Forbidden as e:
+        print(f'[Logs] Error de permisos al enviar log: {e}. Evento: {title}')
+    except discord.errors.NotFound as e:
+        print(f'[Logs] Canal de logs no encontrado (404): {e}. Evento: {title}')
+    except Exception as e:
+        print(f'[Logs] Error al enviar log: {e}. Evento: {title}')
         await log_channel.send(embed=embed)
         print(f'[Logs] Log enviado exitosamente: {title}')
     except Exception as e:
@@ -222,20 +316,36 @@ async def on_ready():
     print(f'Bot conectado: {bot.user.name}')
     print(f'ID: {bot.user.id}')
     print(f'Servidores: {len(bot.guilds)}')
-    
-    # Sincronizar comandos automáticamente (solo global)
+
+    # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
         synced = await bot.tree.sync()
-        print(f'Sincronizados {len(synced)} comandos')
+        print(f'Sincronizados {len(synced)} comandos globales')
+    except discord.app_commands.CommandSyncFailure as e:
+        print(f'Error de sincronización de comandos: {e}')
+        print('Intentando sincronización forzada...')
+        try:
+            synced = await bot.tree.sync(guild=None)
+            print(f'Sincronizados {len(synced)} comandos globales (forzado)')
+        except Exception as e2:
+            print(f'Error en sincronización forzada: {e2}')
     except Exception as e:
-        print(f'Error al sincronizar comandos: {e}')
-    
+        print(f'Error general al sincronizar comandos: {e}')
+
+    # Sincronizar comandos por servidor si es necesario
+    for guild in bot.guilds:
+        try:
+            guild_synced = await bot.tree.sync(guild=guild)
+            print(f'Sincronizados {len(guild_synced)} comandos en servidor {guild.name}')
+        except Exception as e:
+            print(f'Error al sincronizar comandos en servidor {guild.name}: {e}')
+
     # Iniciar actualización automática del ranking
     bot.loop.create_task(update_ranking_periodically())
-    
+
     # Iniciar monitoreo de streams
     bot.loop.create_task(check_streams_periodically())
-    
+
     # Iniciar actualización de temporizadores de sorteos
     bot.loop.create_task(update_giveaway_timers())
 
@@ -247,6 +357,7 @@ async def update_ranking_periodically():
             await update_ranking()
         except Exception as e:
             print(f'[Ranking] Error en actualización periódica: {e}')
+            await asyncio.sleep(60)  # Esperar antes de reintentar
 
 # Monitoreo periódico de streams
 async def check_streams_periodically():
@@ -256,6 +367,7 @@ async def check_streams_periodically():
             await check_all_streamers()
         except Exception as e:
             print(f'[Streams] Error en monitoreo periódico: {e}')
+            await asyncio.sleep(120)  # Esperar antes de reintentar
 
 # Actualización de temporizadores de sorteos
 async def update_giveaway_timers():
@@ -1762,6 +1874,7 @@ async def config_level_channel(interaction: discord.Interaction, channel: discor
     data['config']['level_channel'] = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de nivel configurado: {channel.mention}')
+    print(f'[Config] Canal de nivel configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_welcome_channel', description='Configura el canal para bienvenida de nuevos miembros')
 @discord.app_commands.describe(channel='Canal para bienvenida')
@@ -1770,6 +1883,7 @@ async def config_welcome_channel(interaction: discord.Interaction, channel: disc
     data['config']['welcome_channel'] = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}')
+    print(f'[Config] Canal de bienvenida configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets')
 @discord.app_commands.describe(category='Categoría para tickets')
@@ -1778,6 +1892,7 @@ async def config_ticket_category(interaction: discord.Interaction, category: dis
     data['config']['ticket_category'] = category.id
     save_data()
     await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
+    print(f'[Config] Categoría de tickets configurada: {category.name} (ID: {category.id})')
 
 @bot.tree.command(name='config_ranking_channel', description='Configura el canal para el ranking de niveles')
 @discord.app_commands.describe(channel='Canal para el ranking')
@@ -1788,6 +1903,7 @@ async def config_ranking_channel(interaction: discord.Interaction, channel: disc
     ranking_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de ranking configurado: {channel.mention}')
+    print(f'[Config] Canal de ranking configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_ranking', description='Crea el mensaje de ranking en el canal configurado')
 async def create_ranking(interaction: discord.Interaction):
@@ -1823,8 +1939,11 @@ async def update_ranking_command(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_stream_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     data['config']['stream_channel'] = channel.id
+    global stream_channel_id
+    stream_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de notificaciones de streams configurado: {channel.mention}')
+    print(f'[Config] Canal de streams configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='add_streamer', description='Agrega un streamer al monitoreo')
 @discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
@@ -2147,6 +2266,7 @@ async def config_giveaway_channel(interaction: discord.Interaction, channel: dis
     giveaway_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}')
+    print(f'[Config] Canal de sorteos configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos')
 @discord.app_commands.describe(channel='Canal para anuncios de sorteos')
@@ -2157,6 +2277,7 @@ async def config_announce_channel(interaction: discord.Interaction, channel: dis
     giveaway_announcement_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de anuncios de sorteos configurado: {channel.mention}')
+    print(f'[Config] Canal de anuncios configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_giveaway', description='Crea un nuevo sorteo')
 @discord.app_commands.describe(
@@ -2952,27 +3073,37 @@ async def sync_commands(interaction: discord.Interaction):
 # Manejador de errores global para comandos
 @bot.tree.error
 async def on_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    print(f'[Error Global] Error en comando: {type(error).__name__}: {error}')
+
     if isinstance(error, discord.app_commands.MissingPermissions):
         missing_perms = ", ".join(error.missing_permissions)
         try:
             await interaction.response.send_message(f'❌ No tienes permisos. Necesitas: {missing_perms}', ephemeral=True)
         except discord.errors.NotFound:
             pass  # La interacción expiró
+        except Exception as e:
+            print(f'[Error Global] Error al responder sobre permisos: {e}')
     elif isinstance(error, discord.app_commands.CommandNotFound):
         try:
             await interaction.response.send_message('❌ Comando no encontrado.', ephemeral=True)
         except discord.errors.NotFound:
             pass
+        except Exception as e:
+            print(f'[Error Global] Error al responder sobre comando no encontrado: {e}')
     elif isinstance(error, discord.app_commands.CommandInvokeError):
         try:
             await interaction.response.send_message(f'❌ Error al ejecutar el comando: {str(error.original)}', ephemeral=True)
         except discord.errors.NotFound:
             pass
+        except Exception as e:
+            print(f'[Error Global] Error al responder sobre error de comando: {e}')
     else:
         try:
             await interaction.response.send_message(f'❌ Error: {str(error)}', ephemeral=True)
         except discord.errors.NotFound:
             pass
+        except Exception as e:
+            print(f'[Error Global] Error al responder sobre error general: {e}')
 
 # Iniciar el bot
 bot.run(TOKEN)
