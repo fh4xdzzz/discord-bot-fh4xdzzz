@@ -87,7 +87,8 @@ def validate_data():
         'banned_words': list,
         'config': dict,
         'giveaways': dict,
-        'user_notifications': dict
+        'user_notifications': dict,
+        'servers': dict
     }
 
     required_config_keys = {
@@ -144,6 +145,10 @@ def validate_data():
             if role_type not in data['config']['notification_roles']:
                 data['config']['notification_roles'][role_type] = None
 
+    # Validar estructura de servidores
+    if 'servers' not in data:
+        data['servers'] = {}
+
     save_data()
     print('[Validación] Datos validados y corregidos correctamente')
 
@@ -155,52 +160,64 @@ def save_data():
         print(f'[Error] Error al guardar datos: {e}')
         raise
 
+# Funciones helper para configuración por servidor
+def get_server_config(guild_id):
+    """Obtiene la configuración específica de un servidor"""
+    server_id = str(guild_id)
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    return data['servers'][server_id]
+
+def get_server_setting(guild_id, key, default=None):
+    """Obtiene un valor de configuración específico del servidor"""
+    config = get_server_config(guild_id)
+    return config.get(key, default)
+
+def set_server_setting(guild_id, key, value):
+    """Establece un valor de configuración específico del servidor"""
+    config = get_server_config(guild_id)
+    config[key] = value
+    save_data()
+
 data = load_data()
 validate_data()  # Validar y corregir estructura de datos
 
-# Sistema de ranking
-ranking_message_id = data['config'].get('ranking_message_id')
+# Inicializar variables globales desde data['config'] para compatibilidad
+log_channel_id = data['config'].get('log_channel')
 ranking_channel_id = data['config'].get('ranking_channel')
-
-# Sistema de streams
+ranking_message_id = data['config'].get('ranking_message_id')
+stream_channel_id = data['config'].get('stream_channel')
 streamers_to_monitor = data['config'].get('streamers', [])
-stream_notifications = {}
-
-# Sistema de auto-roles
+giveaway_channel_id = data['config'].get('giveaway_channel')
+giveaway_announcement_channel_id = data['config'].get('giveaway_announcement_channel')
+notifications_channel_id = data['config'].get('notifications_channel')
+notification_roles = data['config'].get('notification_roles', {})
+user_notifications = data.get('user_notifications', {})
 auto_roles = data['config'].get('auto_roles', [])
-
-# Sistema de verificación
 verification_channel_id = data['config'].get('verification_channel')
 verification_message_id = data['config'].get('verification_message_id')
 verification_role_id = data['config'].get('verification_role')
 verified_users = data['config'].get('verified_users', [])
-
-# Sistema de sorteos
-giveaway_channel_id = data['config'].get('giveaway_channel')
-giveaway_announcement_channel_id = data['config'].get('giveaway_announcement_channel')
 giveaways = data.get('giveaways', {})
-
-# Sistema de logs
-log_channel_id = data['config'].get('log_channel')
+stream_notifications = {}  # Para rastrear notificaciones de streams enviadas
 
 # Sistema de rate limiting para logs
 log_rate_limit = {}  # {user_id: {last_log_time}}
 LOG_RATE_LIMIT_SECONDS = 5  # Máximo 1 log por usuario cada 5 segundos
 
-# Asegurar que log_channel esté en la configuración
-if 'log_channel' not in data['config']:
-    data['config']['log_channel'] = None
-    save_data()
-
-# Sistema de notificaciones
-notifications_channel_id = data['config'].get('notifications_channel')
-notification_roles = data['config'].get('notification_roles', {})
-user_notifications = data.get('user_notifications', {})
-
 # Función para enviar logs
 async def send_log(guild, title, description, color=0x3498db, fields=None, author=None, thumbnail=None):
+    if not guild:
+        print(f'[Logs] No se proporcionó guild. Evento: {title}')
+        return
+
+    # Obtener log_channel específico del servidor con fallback a global
+    log_channel_id = get_server_setting(guild.id, 'log_channel', data['config'].get('log_channel'))
+    
     if not log_channel_id:
-        print(f'[Logs] Canal de logs no configurado. Evento: {title}')
+        print(f'[Logs] Canal de logs no configurado para servidor {guild.name}. Evento: {title}')
         return
 
     try:
@@ -210,7 +227,7 @@ async def send_log(guild, title, description, color=0x3498db, fields=None, autho
             return
 
         # Verificar permisos del bot en el canal
-        bot_permissions = log_channel.permissions_for(guild.me if guild else log_channel.guild.me)
+        bot_permissions = log_channel.permissions_for(guild.me)
         if not bot_permissions.send_messages or not bot_permissions.embed_links:
             print(f'[Logs] El bot no tiene permisos para enviar mensajes en el canal de logs. Evento: {title}')
             return
@@ -232,8 +249,7 @@ async def send_log(guild, title, description, color=0x3498db, fields=None, autho
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
 
-        if guild:
-            embed.set_footer(text=f'Sistema de Logs - {guild.name}')
+        embed.set_footer(text=f'Sistema de Logs - {guild.name}')
 
         await log_channel.send(embed=embed)
         print(f'[Logs] Log enviado exitosamente: {title}')
@@ -243,13 +259,16 @@ async def send_log(guild, title, description, color=0x3498db, fields=None, autho
         print(f'[Logs] Canal de logs no encontrado (404): {e}. Evento: {title}')
     except Exception as e:
         print(f'[Logs] Error al enviar log: {e}. Evento: {title}')
-        await log_channel.send(embed=embed)
-        print(f'[Logs] Log enviado exitosamente: {title}')
-    except Exception as e:
-        print(f'[Logs] Error al enviar log: {e}. Evento: {title}')
 
 # Función para enviar notificaciones
 async def send_notification(guild, notification_type, message, color=0x3498db, mention_role=True):
+    if not guild:
+        return
+
+    # Obtener configuración específica del servidor con fallback a global
+    notifications_channel_id = get_server_setting(guild.id, 'notifications_channel', data['config'].get('notifications_channel'))
+    notification_roles = get_server_setting(guild.id, 'notification_roles', data['config'].get('notification_roles', {}))
+    
     if not notifications_channel_id:
         return
     
@@ -358,6 +377,12 @@ async def update_ranking_periodically():
     while True:
         try:
             await asyncio.sleep(60)
+            # Actualizar ranking para cada servidor que tiene configuración
+            if 'servers' in data:
+                for server_id, server_config in data['servers'].items():
+                    if server_config.get('ranking_channel') and server_config.get('ranking_message_id'):
+                        await update_ranking(int(server_id))
+            # También actualizar el ranking global para compatibilidad
             await update_ranking()
         except Exception as e:
             print(f'[Ranking] Error en actualización periódica: {e}')
@@ -379,6 +404,83 @@ async def update_giveaway_timers():
         try:
             await asyncio.sleep(300)  # Actualizar cada 5 minutos (reducido de 30s para evitar spam)
             
+            # Procesar sorteos de cada servidor
+            if 'servers' in data:
+                for server_id, server_config in data['servers'].items():
+                    if 'giveaways' not in server_config:
+                        continue
+                    
+                    server_giveaways = server_config['giveaways']
+                    giveaway_announcement_channel_id = server_config.get('giveaway_announcement_channel')
+                    
+                    for giveaway_id, giveaway in server_giveaways.items():
+                        try:
+                            end_time = datetime.fromisoformat(giveaway['end_time'])
+                            time_left = end_time - datetime.now()
+                            
+                            if time_left.total_seconds() > 0:
+                                # Actualizar el embed con el tiempo restante
+                                channel = bot.get_channel(giveaway['channel_id'])
+                                if channel:
+                                    try:
+                                        message = await channel.fetch_message(giveaway['message_id'])
+                                        embed = message.embeds[0]
+                                        
+                                        # Formatear el tiempo restante
+                                        hours = int(time_left.total_seconds() // 3600)
+                                        minutes = int((time_left.total_seconds() % 3600) // 60)
+                                        seconds = int(time_left.total_seconds() % 60)
+                                        
+                                        if hours > 0:
+                                            time_str = f'{hours}h {minutes}m {seconds}s'
+                                        elif minutes > 0:
+                                            time_str = f'{minutes}m {seconds}s'
+                                        else:
+                                            time_str = f'{seconds}s'
+                                        
+                                        # Actualizar el campo de tiempo
+                                        for i, field in enumerate(embed.fields):
+                                            if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
+                                                embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
+                                                break
+                                        
+                                        await message.edit(embed=embed)
+                                        print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
+                                    except Exception as e:
+                                        print(f'[Sorteo] Error al actualizar mensaje: {e}')
+                                
+                                # Enviar recordatorio en el canal de anuncios
+                                if giveaway_announcement_channel_id:
+                                    try:
+                                        announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
+                                        if announcement_channel:
+                                            reminder_embed = discord.Embed(
+                                                title='🎉 ¡Sorteo en curso!',
+                                                description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
+                                                color=0xFFD700
+                                            )
+                                            reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
+                                            reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
+                                            reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
+                                            reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
+                                            
+                                            # Enviar mensaje con @everyone
+                                            reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
+                                            
+                                            # Guardar el ID del mensaje para eliminarlo después
+                                            if 'announcement_messages' not in giveaway:
+                                                giveaway['announcement_messages'] = []
+                                            giveaway['announcement_messages'].append(reminder_message.id)
+                                            data['servers'][server_id]['giveaways'][giveaway_id] = giveaway
+                                            save_data()
+                                            
+                                            print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
+                                    except Exception as e:
+                                        print(f'[Sorteo] Error al enviar recordatorio: {e}')
+                        except Exception as e:
+                            print(f'[Sorteo] Error en actualización del sorteo {giveaway_id}: {e}')
+            
+            # Fallback a sorteos globales para compatibilidad
             for giveaway_id, giveaway in giveaways.items():
                 try:
                     end_time = datetime.fromisoformat(giveaway['end_time'])
@@ -412,10 +514,10 @@ async def update_giveaway_timers():
                                 
                                 await message.edit(embed=embed)
                                 print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
-                            except Exception as e:
-                                print(f'[Sorteo] Error al actualizar mensaje: {e}')
+                            except:
+                                pass  # Mensaje ya no existe, puede que fue eliminado
                         
-                        # Enviar recordatorio en el canal de anuncios (cada 5 minutos en lugar de 30s)
+                        # Enviar recordatorio en el canal de anuncios
                         if giveaway_announcement_channel_id:
                             try:
                                 announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
@@ -444,79 +546,21 @@ async def update_giveaway_timers():
                             except Exception as e:
                                 print(f'[Sorteo] Error al enviar recordatorio: {e}')
                 except Exception as e:
-                    print(f'[Sorteo] Error en actualización del sorteo {giveaway_id}: {e}')
+                    print(f'[Sorteo] Error en actualización: {e}')
         except Exception as e:
             print(f'[Sorteo] Error general en actualización de temporizadores: {e}')
-        
-        for giveaway_id, giveaway in giveaways.items():
-            try:
-                end_time = datetime.fromisoformat(giveaway['end_time'])
-                time_left = end_time - datetime.now()
-                
-                if time_left.total_seconds() > 0:
-                    # Actualizar el embed con el tiempo restante
-                    channel = bot.get_channel(giveaway['channel_id'])
-                    if channel:
-                        try:
-                            message = await channel.fetch_message(giveaway['message_id'])
-                            embed = message.embeds[0]
-                            
-                            # Formatear el tiempo restante
-                            hours = int(time_left.total_seconds() // 3600)
-                            minutes = int((time_left.total_seconds() % 3600) // 60)
-                            seconds = int(time_left.total_seconds() % 60)
-                            
-                            if hours > 0:
-                                time_str = f'{hours}h {minutes}m {seconds}s'
-                            elif minutes > 0:
-                                time_str = f'{minutes}m {seconds}s'
-                            else:
-                                time_str = f'{seconds}s'
-                            
-                            # Actualizar el campo de tiempo
-                            for i, field in enumerate(embed.fields):
-                                if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
-                                    embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                    break
-                            
-                            await message.edit(embed=embed)
-                            print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
-                        except:
-                            pass  # Mensaje ya no existe, puede que fue eliminado
-                    
-                    # Enviar recordatorio en el canal de anuncios
-                    if giveaway_announcement_channel_id:
-                        try:
-                            announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                            if announcement_channel:
-                                reminder_embed = discord.Embed(
-                                    title='🎉 ¡Sorteo en curso!',
-                                    description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
-                                    color=0xFFD700
-                                )
-                                reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
-                                reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
-                                reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
-                                
-                                # Enviar mensaje con @everyone
-                                reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
-                                
-                                # Guardar el ID del mensaje para eliminarlo después
-                                if 'announcement_messages' not in giveaway:
-                                    giveaway['announcement_messages'] = []
-                                giveaway['announcement_messages'].append(reminder_message.id)
-                                data['giveaways'][giveaway_id] = giveaway
-                                save_data()
-                                
-                                print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
-                        except Exception as e:
-                            print(f'[Sorteo] Error al enviar recordatorio: {e}')
-            except Exception as e:
-                print(f'[Sorteo] Error en actualización: {e}')
 
 # Actualizar ranking
-async def update_ranking():
+async def update_ranking(guild_id=None):
+    if guild_id:
+        # Actualizar ranking específico del servidor
+        ranking_channel_id = get_server_setting(guild_id, 'ranking_channel', data['config'].get('ranking_channel'))
+        ranking_message_id = get_server_setting(guild_id, 'ranking_message_id', data['config'].get('ranking_message_id'))
+    else:
+        # Fallback a global (para compatibilidad)
+        ranking_channel_id = data['config'].get('ranking_channel')
+        ranking_message_id = data['config'].get('ranking_message_id')
+    
     if not ranking_channel_id or not ranking_message_id:
         return
     
@@ -526,15 +570,23 @@ async def update_ranking():
             return
         
         message = await channel.fetch_message(ranking_message_id)
-        embed = create_ranking_embed()
+        embed = create_ranking_embed(channel.guild.id)
         await message.edit(embed=embed)
         print('Ranking actualizado')
     except Exception as e:
         print(f'Error al actualizar ranking: {e}')
 
 # Crear embed de ranking
-def create_ranking_embed():
-    sorted_users = sorted(data['users'].items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:15]
+def create_ranking_embed(guild_id):
+    server_id = str(guild_id)
+    
+    # Obtener usuarios del servidor específico
+    if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
+        users = data['servers'][server_id]['users']
+    else:
+        users = data.get('users', {})  # Fallback a global
+    
+    sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:15]
     
     embed = discord.Embed(
         title='🏆 Ranking de Niveles',
@@ -559,27 +611,51 @@ def create_ranking_embed():
 
 # Verificar streams
 async def check_all_streamers():
-    if not data['config']['stream_channel'] or not streamers_to_monitor:
-        return
-    
-    channel = bot.get_channel(data['config']['stream_channel'])
-    if not channel:
-        return
-    
-    guild = channel.guild
-    
-    for streamer in streamers_to_monitor:
-        try:
-            is_live = await check_streamer_live(streamer['platform'], streamer['username'])
-            key = f"{streamer['platform']}-{streamer['username']}"
+    # Verificar streams para cada servidor configurado
+    if 'servers' in data:
+        for server_id, server_config in data['servers'].items():
+            stream_channel_id = server_config.get('stream_channel')
+            streamers = server_config.get('streamers', [])
             
-            if is_live and key not in stream_notifications:
-                await send_stream_notification(channel, streamer, guild)
-                stream_notifications[key] = datetime.now().timestamp()
-            elif not is_live and key in stream_notifications:
-                del stream_notifications[key]
-        except Exception as e:
-            print(f'Error checking streamer {streamer["username"]}: {e}')
+            if not stream_channel_id or not streamers:
+                continue
+            
+            channel = bot.get_channel(stream_channel_id)
+            if not channel:
+                continue
+            
+            guild = channel.guild
+            
+            for streamer in streamers:
+                try:
+                    is_live = await check_streamer_live(streamer['platform'], streamer['username'])
+                    key = f"{server_id}-{streamer['platform']}-{streamer['username']}"
+                    
+                    if is_live and key not in stream_notifications:
+                        await send_stream_notification(channel, streamer, guild)
+                        stream_notifications[key] = datetime.now().timestamp()
+                    elif not is_live and key in stream_notifications:
+                        del stream_notifications[key]
+                except Exception as e:
+                    print(f'Error checking streamer {streamer["username"]}: {e}')
+    
+    # Fallback a configuración global para compatibilidad
+    if data['config'].get('stream_channel') and data['config'].get('streamers'):
+        channel = bot.get_channel(data['config']['stream_channel'])
+        if channel:
+            guild = channel.guild
+            for streamer in data['config']['streamers']:
+                try:
+                    is_live = await check_streamer_live(streamer['platform'], streamer['username'])
+                    key = f"global-{streamer['platform']}-{streamer['username']}"
+                    
+                    if is_live and key not in stream_notifications:
+                        await send_stream_notification(channel, streamer, guild)
+                        stream_notifications[key] = datetime.now().timestamp()
+                    elif not is_live and key in stream_notifications:
+                        del stream_notifications[key]
+                except Exception as e:
+                    print(f'Error checking streamer {streamer["username"]}: {e}')
 
 # Verificar si streamer está en live
 async def check_streamer_live(platform, username):
@@ -647,62 +723,73 @@ async def on_message(message):
         if await check_spam(message):
             return
     
-    # Dar XP por mensajes
-    user_id = str(message.author.id)
-    if user_id not in data['users']:
-        data['users'][user_id] = {'level': 1, 'xp': 0}
-    
-    data['users'][user_id]['xp'] += 10
-    
-    # Subir de nivel
-    xp_needed = data['users'][user_id]['level'] * 100
-    if data['users'][user_id]['xp'] >= xp_needed:
-        data['users'][user_id]['level'] += 1
-        data['users'][user_id]['xp'] = 0
-        new_level = data['users'][user_id]['level']
+    # Dar XP por mensajes (solo en servidores)
+    if message.guild:
+        server_id = str(message.guild.id)
+        user_id = str(message.author.id)
         
-        level_channel_id = data['config']['level_channel']
-        level_channel = message.channel
+        # Inicializar estructura del servidor si no existe
+        if 'servers' not in data:
+            data['servers'] = {}
+        if server_id not in data['servers']:
+            data['servers'][server_id] = {}
+        if 'users' not in data['servers'][server_id]:
+            data['servers'][server_id]['users'] = {}
         
-        if level_channel_id:
-            try:
-                level_channel = bot.get_channel(level_channel_id)
-                if level_channel:
-                    level_channel = level_channel
-            except:
-                pass
+        if user_id not in data['servers'][server_id]['users']:
+            data['servers'][server_id]['users'][user_id] = {'level': 1, 'xp': 0}
         
-        embed = discord.Embed(
-            title='¡SUBIDA DE NIVEL!',
-            description=f'¡Felicidades {message.author.mention} has subido al nivel **{new_level}**!',
-            color=0xFFD700
-        )
+        data['servers'][server_id]['users'][user_id]['xp'] += 10
         
-        embed.add_field(name='Nuevo Nivel', value=f'**{new_level}**', inline=True)
-        embed.add_field(name='XP Total', value=str(new_level * 100 - 100), inline=True)
-        embed.set_thumbnail(url=message.author.display_avatar.url)
-        embed.set_footer(text=f'Usuario: {message.author.name} | ID: {message.author.id}')
+        # Subir de nivel
+        xp_needed = data['servers'][server_id]['users'][user_id]['level'] * 100
+        if data['servers'][server_id]['users'][user_id]['xp'] >= xp_needed:
+            data['servers'][server_id]['users'][user_id]['level'] += 1
+            data['servers'][server_id]['users'][user_id]['xp'] = 0
+            new_level = data['servers'][server_id]['users'][user_id]['level']
+            
+            level_channel_id = get_server_setting(message.guild.id, 'level_channel', data['config'].get('level_channel'))
+            level_channel = message.channel
+            
+            if level_channel_id:
+                try:
+                    level_channel = bot.get_channel(level_channel_id)
+                    if level_channel:
+                        level_channel = level_channel
+                except:
+                    pass
+            
+            embed = discord.Embed(
+                title='¡SUBIDA DE NIVEL!',
+                description=f'¡Felicidades {message.author.mention} has subido al nivel **{new_level}**!',
+                color=0xFFD700
+            )
+            
+            embed.add_field(name='Nuevo Nivel', value=f'**{new_level}**', inline=True)
+            embed.add_field(name='XP Total', value=str(new_level * 100 - 100), inline=True)
+            embed.set_thumbnail(url=message.author.display_avatar.url)
+            embed.set_footer(text=f'Usuario: {message.author.name} | ID: {message.author.id}')
+            
+            await level_channel.send(embed=embed)
+            
+            # Log de subida de nivel
+            await send_log(
+                guild=message.guild,
+                title='Subida de Nivel',
+                description=f'{message.author.mention} ha subido al nivel **{new_level}**',
+                color=0xFFD700,
+                fields=[
+                    {'name': 'Usuario', 'value': message.author.name, 'inline': True},
+                    {'name': 'Nuevo nivel', 'value': str(new_level), 'inline': True},
+                    {'name': 'XP total', 'value': str(new_level * 100 - 100), 'inline': True}
+                ],
+                author={'name': message.author.name, 'icon_url': message.author.display_avatar.url}
+            )
+            
+            if level_channel.id != message.channel.id:
+                await message.channel.send(f'{message.author.mention} subió al nivel {new_level}!')
         
-        await level_channel.send(embed=embed)
-        
-        # Log de subida de nivel
-        await send_log(
-            guild=message.guild,
-            title='Subida de Nivel',
-            description=f'{message.author.mention} ha subido al nivel **{new_level}**',
-            color=0xFFD700,
-            fields=[
-                {'name': 'Usuario', 'value': message.author.name, 'inline': True},
-                {'name': 'Nuevo nivel', 'value': str(new_level), 'inline': True},
-                {'name': 'XP total', 'value': str(new_level * 100 - 100), 'inline': True}
-            ],
-            author={'name': message.author.name, 'icon_url': message.author.display_avatar.url}
-        )
-        
-        if level_channel.id != message.channel.id:
-            await message.channel.send(f'{message.author.mention} subió al nivel {new_level}!')
-    
-    save_data()
+        save_data()
     
     # Automoderación manual
     if message.guild:
@@ -919,14 +1006,16 @@ async def delete_and_warn(message, reason):
         
         await message.channel.send(embed=embed)
         
-        log_channel_id = data['config'].get('log_channel')
-        if log_channel_id:
-            try:
-                log_channel = bot.get_channel(log_channel_id)
-                if log_channel:
-                    await log_channel.send(embed=embed)
-            except:
-                pass
+        # Usar log_channel específico del servidor
+        if message.guild:
+            log_channel_id = get_server_setting(message.guild.id, 'log_channel', data['config'].get('log_channel'))
+            if log_channel_id:
+                try:
+                    log_channel = bot.get_channel(log_channel_id)
+                    if log_channel:
+                        await log_channel.send(embed=embed)
+                except:
+                    pass
         
         print(f'[Auto-Protección] Mensaje eliminado de {message.author.name}: {reason}')
         
@@ -936,6 +1025,16 @@ async def delete_and_warn(message, reason):
 # Evento guild_member_add
 @bot.event
 async def on_member_join(member):
+    server_id = str(member.guild.id)
+    
+    # Inicializar estructura del servidor si no existe
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'users' not in data['servers'][server_id]:
+        data['servers'][server_id]['users'] = {}
+    
     # Log de nuevo miembro
     await send_log(
         guild=member.guild,
@@ -952,10 +1051,17 @@ async def on_member_join(member):
         thumbnail=member.display_avatar.url
     )
     
-    # Verificar si ya está verificado
-    if str(member.id) in verified_users:
-        await assign_auto_roles(member)
+    # Verificar si ya está verificado (usar configuración del servidor)
+    server_verified_users = data['servers'][server_id].get('verified_users', [])
+    if str(member.id) in server_verified_users:
+        server_auto_roles = data['servers'][server_id].get('auto_roles', [])
+        if server_auto_roles:
+            for role_id in server_auto_roles:
+                auto_role = member.guild.get_role(role_id)
+                if auto_role:
+                    await member.add_roles(auto_role)
     else:
+        verification_channel_id = get_server_setting(member.guild.id, 'verification_channel', data['config'].get('verification_channel'))
         if verification_channel_id:
             try:
                 verification_channel = bot.get_channel(verification_channel_id)
@@ -973,7 +1079,7 @@ async def on_member_join(member):
             except:
                 pass
     
-    welcome_channel_id = data['config']['welcome_channel']
+    welcome_channel_id = get_server_setting(member.guild.id, 'welcome_channel', data['config'].get('welcome_channel'))
     channel = member.guild.system_channel
     
     if welcome_channel_id:
@@ -1005,8 +1111,8 @@ async def on_member_join(member):
         await channel.send(embed=embed)
     
     user_id = str(member.id)
-    if user_id not in data['users']:
-        data['users'][user_id] = {'level': 1, 'xp': 0}
+    if user_id not in data['servers'][server_id]['users']:
+        data['servers'][server_id]['users'][user_id] = {'level': 1, 'xp': 0}
         save_data()
 
 # Evento de reacción para verificación
@@ -1074,7 +1180,59 @@ async def on_raw_reaction_add(payload):
             except Exception as e:
                 print(f'Error en verificación: {e}')
     
-    # Sorteos
+    # Sorteos (verificar en todos los servidores)
+    server_id = str(payload.guild_id)
+    if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
+        if str(payload.message_id) in data['servers'][server_id]['giveaways']:
+            try:
+                giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
+                if str(payload.emoji) == '🎉':
+                    guild = bot.get_guild(payload.guild_id)
+                    member = guild.get_member(payload.user_id)
+                    
+                    if member and not member.bot:
+                        user_id = str(member.id)
+                        if user_id not in giveaway['participants']:
+                            giveaway['participants'].append(user_id)
+                            data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
+                            save_data()
+                            print(f'[Sorteo] {member.name} se unió al sorteo {giveaway["prize"]}')
+                            
+                            # Actualizar el embed del sorteo con el nuevo contador
+                            try:
+                                channel = bot.get_channel(giveaway['channel_id'])
+                                if channel:
+                                    message = await channel.fetch_message(giveaway['message_id'])
+                                    embed = message.embeds[0]
+                                    
+                                    # Actualizar el campo de participantes
+                                    for i, field in enumerate(embed.fields):
+                                        if field.name == '👥 Participantes':
+                                            embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
+                                            break
+                                    
+                                    await message.edit(embed=embed)
+                                    print(f'[Sorteo] Contador actualizado: {len(giveaway["participants"])} participantes')
+                            except Exception as e:
+                                print(f'[Sorteo] Error al actualizar embed: {e}')
+                            
+                            # Log de participación en sorteo
+                            await send_log(
+                                guild=guild,
+                                title='Participación en Sorteo',
+                                description=f'{member.mention} se ha unido al sorteo',
+                                color=0xFFD700,
+                                fields=[
+                                    {'name': 'Usuario', 'value': member.name, 'inline': True},
+                                    {'name': 'Premio', 'value': giveaway['prize'], 'inline': True},
+                                    {'name': 'Total participantes', 'value': str(len(giveaway['participants'])), 'inline': True}
+                                ],
+                                author={'name': member.name, 'icon_url': member.display_avatar.url}
+                            )
+            except Exception as e:
+                print(f'Error en sorteo: {e}')
+    
+    # Fallback a sorteos globales para compatibilidad
     if str(payload.message_id) in giveaways:
         try:
             giveaway = giveaways[str(payload.message_id)]
@@ -1941,9 +2099,21 @@ async def info(interaction: discord.Interaction):
 
 @bot.tree.command(name='level', description='Muestra tu nivel y XP actual')
 async def level(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
-    if user_id in data['users']:
-        user_data = data['users'][user_id]
+    
+    # Obtener usuarios del servidor específico
+    if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
+        users = data['servers'][server_id]['users']
+    else:
+        users = data.get('users', {})  # Fallback a global
+    
+    if user_id in users:
+        user_data = users[user_id]
         level = user_data['level']
         xp = user_data['xp']
         xp_needed = level * 100
@@ -1963,7 +2133,19 @@ async def level(interaction: discord.Interaction):
 
 @bot.tree.command(name='top', description='Muestra el top 10 usuarios por nivel')
 async def top(interaction: discord.Interaction):
-    sorted_users = sorted(data['users'].items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:10]
+    if not interaction.guild:
+        await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    
+    # Obtener usuarios del servidor específico
+    if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
+        users = data['servers'][server_id]['users']
+    else:
+        users = data.get('users', {})  # Fallback a global
+    
+    sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:10]
     
     embed = discord.Embed(
         title='🏆 Top 10 Usuarios por Nivel',
@@ -1984,42 +2166,48 @@ async def top(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal para notificaciones de nivel')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_level_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['level_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'level_channel', channel.id)
+    data['config']['level_channel'] = channel.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Canal de nivel configurado: {channel.mention}')
-    print(f'[Config] Canal de nivel configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de nivel configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_welcome_channel', description='Configura el canal para bienvenida de nuevos miembros')
 @discord.app_commands.describe(channel='Canal para bienvenida')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['welcome_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'welcome_channel', channel.id)
+    data['config']['welcome_channel'] = channel.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}')
-    print(f'[Config] Canal de bienvenida configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de bienvenida configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets')
 @discord.app_commands.describe(category='Categoría para tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_ticket_category(interaction: discord.Interaction, category: discord.CategoryChannel):
-    data['config']['ticket_category'] = category.id
+    set_server_setting(interaction.guild.id, 'ticket_category', category.id)
+    data['config']['ticket_category'] = category.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
-    print(f'[Config] Categoría de tickets configurada: {category.name} (ID: {category.id})')
+    print(f'[Config] Categoría de tickets configurada en servidor {interaction.guild.name}: {category.name} (ID: {category.id})')
 
 @bot.tree.command(name='config_ranking_channel', description='Configura el canal para el ranking de niveles')
 @discord.app_commands.describe(channel='Canal para el ranking')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_ranking_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['ranking_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'ranking_channel', channel.id)
+    data['config']['ranking_channel'] = channel.id  # Guardar en global para compatibilidad
     global ranking_channel_id
     ranking_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de ranking configurado: {channel.mention}')
-    print(f'[Config] Canal de ranking configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de ranking configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_ranking', description='Crea el mensaje de ranking en el canal configurado')
 async def create_ranking(interaction: discord.Interaction):
+    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel', data['config'].get('ranking_channel'))
+    
     if not ranking_channel_id:
         await interaction.response.send_message('❌ Primero configura el canal de ranking con /config_ranking_channel', ephemeral=True)
         return
@@ -2030,12 +2218,13 @@ async def create_ranking(interaction: discord.Interaction):
         return
     
     try:
-        embed = create_ranking_embed()
+        embed = create_ranking_embed(interaction.guild.id)
         message = await channel.send(embed=embed)
         
+        set_server_setting(interaction.guild.id, 'ranking_message_id', message.id)
+        data['config']['ranking_message_id'] = message.id  # Guardar en global para compatibilidad
         global ranking_message_id
         ranking_message_id = message.id
-        data['config']['ranking_message_id'] = message.id
         save_data()
         
         await interaction.response.send_message(f'✅ Ranking creado en {channel.mention}')
@@ -2051,12 +2240,13 @@ async def update_ranking_command(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal para notificaciones de streams')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_stream_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['stream_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'stream_channel', channel.id)
+    data['config']['stream_channel'] = channel.id  # Guardar en global para compatibilidad
     global stream_channel_id
     stream_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de notificaciones de streams configurado: {channel.mention}')
-    print(f'[Config] Canal de streams configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de streams configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='add_streamer', description='Agrega un streamer al monitoreo')
 @discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
@@ -2066,17 +2256,19 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
         await interaction.response.send_message('❌ Plataforma no válida. Usa: tiktok, kick, twitch, youtube', ephemeral=True)
         return
     
-    if not data['config']['streamers']:
-        data['config']['streamers'] = []
+    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
     
-    for s in data['config']['streamers']:
+    if not streamers:
+        streamers = []
+    
+    for s in streamers:
         if s['platform'] == platform and s['username'] == username:
             await interaction.response.send_message('⚠️ Este streamer ya está siendo monitoreado.', ephemeral=True)
             return
     
-    data['config']['streamers'].append({'platform': platform, 'username': username})
-    global streamers_to_monitor
-    streamers_to_monitor = data['config']['streamers']
+    streamers.append({'platform': platform, 'username': username})
+    set_server_setting(interaction.guild.id, 'streamers', streamers)
+    data['config']['streamers'] = streamers  # Guardar en global para compatibilidad
     save_data()
     
     await interaction.response.send_message(f'✅ Streamer agregado: {username} ({platform})')
@@ -2085,15 +2277,17 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
 @discord.app_commands.describe(username='Nombre de usuario del streamer')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_streamer(interaction: discord.Interaction, username: str):
-    if not data['config']['streamers']:
+    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    
+    if not streamers:
         await interaction.response.send_message('❌ No hay streamers monitoreados.', ephemeral=True)
         return
     
-    for i, s in enumerate(data['config']['streamers']):
+    for i, s in enumerate(streamers):
         if s['username'] == username:
-            removed = data['config']['streamers'].pop(i)
-            global streamers_to_monitor
-            streamers_to_monitor = data['config']['streamers']
+            removed = streamers.pop(i)
+            set_server_setting(interaction.guild.id, 'streamers', streamers)
+            data['config']['streamers'] = streamers  # Guardar en global para compatibilidad
             save_data()
             await interaction.response.send_message(f'✅ Streamer eliminado: {removed["username"]} ({removed["platform"]})')
             return
@@ -2102,11 +2296,13 @@ async def remove_streamer(interaction: discord.Interaction, username: str):
 
 @bot.tree.command(name='list_streamers', description='Lista los streamers monitoreados')
 async def list_streamers(interaction: discord.Interaction):
-    if not data['config']['streamers'] or not data['config']['streamers']:
+    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    
+    if not streamers:
         await interaction.response.send_message('❌ No hay streamers monitoreados.', ephemeral=True)
         return
     
-    description = '\n'.join([f'• {s["username"]} ({s["platform"]})' for s in data['config']['streamers']])
+    description = '\n'.join([f'• {s["username"]} ({s["platform"]})' for s in streamers])
     
     embed = discord.Embed(
         title='📺 Streamers Monitoreados',
@@ -2153,48 +2349,61 @@ async def config_remove_banned_word(interaction: discord.Interaction, word: str)
 
 @bot.tree.command(name='config_show', description='Muestra la configuración actual')
 async def config_show(interaction: discord.Interaction):
-    config = data['config']
+    server_id = str(interaction.guild.id)
+    
+    # Obtener configuración específica del servidor con fallback a global
+    level_channel_id = get_server_setting(interaction.guild.id, 'level_channel', data['config'].get('level_channel'))
+    welcome_channel_id = get_server_setting(interaction.guild.id, 'welcome_channel', data['config'].get('welcome_channel'))
+    ticket_category_id = get_server_setting(interaction.guild.id, 'ticket_category', data['config'].get('ticket_category'))
+    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel', data['config'].get('ranking_channel'))
+    stream_channel_id = get_server_setting(interaction.guild.id, 'stream_channel', data['config'].get('stream_channel'))
+    log_channel_id = get_server_setting(interaction.guild.id, 'log_channel', data['config'].get('log_channel'))
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
+    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    
     embed = discord.Embed(
-        title='⚙️ Configuración del Bot',
+        title=f'⚙️ Configuración del Bot - {interaction.guild.name}',
         color=0x3498db
     )
     
-    if config.get('level_channel'):
-        level_channel = bot.get_channel(config['level_channel'])
+    if level_channel_id:
+        level_channel = bot.get_channel(level_channel_id)
         embed.add_field(name='Canal de Nivel', value=level_channel.mention if level_channel else 'No encontrado', inline=False)
     else:
         embed.add_field(name='Canal de Nivel', value='No configurado', inline=False)
     
-    if config.get('welcome_channel'):
-        welcome_channel = bot.get_channel(config['welcome_channel'])
+    if welcome_channel_id:
+        welcome_channel = bot.get_channel(welcome_channel_id)
         embed.add_field(name='Canal de Bienvenida', value=welcome_channel.mention if welcome_channel else 'No encontrado', inline=False)
     else:
         embed.add_field(name='Canal de Bienvenida', value='No configurado', inline=False)
     
-    if config.get('ticket_category'):
-        ticket_category = bot.get_channel(config['ticket_category'])
+    if ticket_category_id:
+        ticket_category = bot.get_channel(ticket_category_id)
         embed.add_field(name='Categoría de Tickets', value=ticket_category.name if ticket_category else 'No encontrada', inline=False)
     else:
         embed.add_field(name='Categoría de Tickets', value='No configurada', inline=False)
     
-    if config.get('ranking_channel'):
-        ranking_channel = bot.get_channel(config['ranking_channel'])
+    if ranking_channel_id:
+        ranking_channel = bot.get_channel(ranking_channel_id)
         embed.add_field(name='Canal de Ranking', value=ranking_channel.mention if ranking_channel else 'No encontrado', inline=False)
     else:
         embed.add_field(name='Canal de Ranking', value='No configurado', inline=False)
     
-    if config.get('stream_channel'):
-        stream_channel = bot.get_channel(config['stream_channel'])
+    if stream_channel_id:
+        stream_channel = bot.get_channel(stream_channel_id)
         embed.add_field(name='Canal de Streams', value=stream_channel.mention if stream_channel else 'No encontrado', inline=False)
+        embed.add_field(name='Streamers Monitoreados', value=f'{len(streamers)} streamers', inline=False)
     else:
         embed.add_field(name='Canal de Streams', value='No configurado', inline=False)
     
-    if config.get('log_channel'):
-        log_channel = bot.get_channel(config['log_channel'])
+    if log_channel_id:
+        log_channel = bot.get_channel(log_channel_id)
         embed.add_field(name='Canal de Logs', value=log_channel.mention if log_channel else 'No encontrado', inline=False)
     else:
         embed.add_field(name='Canal de Logs', value='No configurado', inline=False)
     
+    embed.add_field(name='Auto-Roles', value=f'{len(auto_roles)} roles configurados', inline=False)
     embed.add_field(name='Palabras Prohibidas', value=f'{len(data["banned_words"])} palabras', inline=False)
     embed.add_field(name='🛡️ Auto-Protección', value='✅ ACTIVA (siempre)', inline=False)
     
@@ -2204,7 +2413,8 @@ async def config_show(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal para logs de seguridad')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_log_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['log_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'log_channel', channel.id)
+    data['config']['log_channel'] = channel.id  # Guardar en global para compatibilidad
     save_data()
 
     # Actualizar la variable global
@@ -2212,22 +2422,24 @@ async def config_log_channel(interaction: discord.Interaction, channel: discord.
     log_channel_id = channel.id
 
     await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}')
-    print(f'[Logs] Canal de logs configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Logs] Canal de logs configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros')
 @discord.app_commands.describe(role='Rol a asignar automáticamente')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
-    if not data['config']['auto_roles']:
-        data['config']['auto_roles'] = []
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
     
-    if role.id in data['config']['auto_roles']:
+    if not auto_roles:
+        auto_roles = []
+    
+    if role.id in auto_roles:
         await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.', ephemeral=True)
         return
     
-    data['config']['auto_roles'].append(role.id)
-    global auto_roles
-    auto_roles = data['config']['auto_roles']
+    auto_roles.append(role.id)
+    set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+    data['config']['auto_roles'] = auto_roles  # Guardar en global para compatibilidad
     save_data()
     
     await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}')
@@ -2236,28 +2448,32 @@ async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
 @discord.app_commands.describe(role='Rol a eliminar de auto-roles')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_auto_role(interaction: discord.Interaction, role: discord.Role):
-    if not data['config']['auto_roles']:
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
+    
+    if not auto_roles:
         await interaction.response.send_message('❌ No hay auto-roles configurados.', ephemeral=True)
         return
     
-    if role.id not in data['config']['auto_roles']:
+    if role.id not in auto_roles:
         await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.', ephemeral=True)
         return
     
-    data['config']['auto_roles'].remove(role.id)
-    global auto_roles
-    auto_roles = data['config']['auto_roles']
+    auto_roles.remove(role.id)
+    set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+    data['config']['auto_roles'] = auto_roles  # Guardar en global para compatibilidad
     save_data()
     
     await interaction.response.send_message(f'✅ Auto-rol eliminado: {role.mention}')
 
 @bot.tree.command(name='list_auto_roles', description='Lista los roles que se asignan automáticamente')
 async def list_auto_roles(interaction: discord.Interaction):
-    if not data['config']['auto_roles'] or not data['config']['auto_roles']:
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
+    
+    if not auto_roles:
         await interaction.response.send_message('❌ No hay auto-roles configurados.', ephemeral=True)
         return
     
-    description = '\n'.join([f'• {interaction.guild.get_role(role_id).name}' for role_id in data['config']['auto_roles'] if interaction.guild.get_role(role_id)])
+    description = '\n'.join([f'• {interaction.guild.get_role(role_id).name}' for role_id in auto_roles if interaction.guild.get_role(role_id)])
     
     embed = discord.Embed(
         title='🎭 Auto-Roles Configurados',
@@ -2385,6 +2601,14 @@ async def manual_verify(interaction: discord.Interaction, member: discord.Member
 
 @bot.tree.command(name='check_verification_status', description='Verifica el estado del sistema de verificación')
 async def check_verification_status(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+    
+    verification_channel_id = get_server_setting(interaction.guild.id, 'verification_channel', data['config'].get('verification_channel'))
+    verification_role_id = get_server_setting(interaction.guild.id, 'verification_role', data['config'].get('verification_role'))
+    verification_message_id = get_server_setting(interaction.guild.id, 'verification_message_id', data['config'].get('verification_message_id'))
+    verified_users = get_server_setting(interaction.guild.id, 'verified_users', data['config'].get('verified_users', []))
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
+    
     if not verification_channel_id or not verification_role_id:
         await interaction.response.send_message('❌ Sistema de verificación no configurado', ephemeral=True)
         return
@@ -2410,23 +2634,25 @@ async def check_verification_status(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal para sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_giveaway_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['giveaway_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'giveaway_channel', channel.id)
+    data['config']['giveaway_channel'] = channel.id  # Guardar en global para compatibilidad
     global giveaway_channel_id
     giveaway_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}')
-    print(f'[Config] Canal de sorteos configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de sorteos configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos')
 @discord.app_commands.describe(channel='Canal para anuncios de sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_announce_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['giveaway_announcement_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel.id)
+    data['config']['giveaway_announcement_channel'] = channel.id  # Guardar en global para compatibilidad
     global giveaway_announcement_channel_id
     giveaway_announcement_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de anuncios de sorteos configurado: {channel.mention}')
-    print(f'[Config] Canal de anuncios configurado: {channel.name} (ID: {channel.id})')
+    print(f'[Config] Canal de anuncios configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_giveaway', description='Crea un nuevo sorteo')
 @discord.app_commands.describe(
@@ -2436,6 +2662,10 @@ async def config_announce_channel(interaction: discord.Interaction, channel: dis
 )
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_giveaway(interaction: discord.Interaction, prize: str, duration: int, winners: int = 1):
+    server_id = str(interaction.guild.id)
+    giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel', data['config'].get('giveaway_channel'))
+    giveaway_announcement_channel_id = get_server_setting(interaction.guild.id, 'giveaway_announcement_channel', data['config'].get('giveaway_announcement_channel'))
+    
     if not giveaway_channel_id:
         await interaction.response.send_message('❌ Primero configura el canal de sorteos con /config_giveaway_channel', ephemeral=True)
         return
@@ -2446,6 +2676,14 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         return
     
     try:
+        # Inicializar estructura de sorteos del servidor
+        if 'servers' not in data:
+            data['servers'] = {}
+        if server_id not in data['servers']:
+            data['servers'][server_id] = {}
+        if 'giveaways' not in data['servers'][server_id]:
+            data['servers'][server_id]['giveaways'] = {}
+        
         # Calcular fecha de finalización
         end_time = datetime.now() + timedelta(minutes=duration)
         
@@ -2467,9 +2705,9 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         message = await channel.send(embed=embed)
         await message.add_reaction('🎉')
         
-        # Guardar sorteo
+        # Guardar sorteo en el servidor específico
         giveaway_id = str(message.id)
-        giveaways[giveaway_id] = {
+        data['servers'][server_id]['giveaways'][giveaway_id] = {
             'prize': prize,
             'end_time': end_time.isoformat(),
             'winners': winners,
@@ -2479,6 +2717,8 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
             'message_id': message.id,
             'announcement_messages': []  # Guardar IDs de mensajes de anuncios
         }
+        # También guardar en global para compatibilidad
+        giveaways[giveaway_id] = data['servers'][server_id]['giveaways'][giveaway_id]
         data['giveaways'] = giveaways
         save_data()
         
@@ -2508,20 +2748,31 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
                 print(f'[Sorteo] Error al enviar anuncio: {e}')
         
         # Iniciar tarea para finalizar sorteo
-        bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60))
+        bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60, server_id))
         
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al crear sorteo: {e}', ephemeral=True)
 
-async def end_giveaway_after_delay(giveaway_id, delay):
+async def end_giveaway_after_delay(giveaway_id, delay, server_id=None):
     await asyncio.sleep(delay)
-    await end_giveaway(giveaway_id)
+    await end_giveaway(giveaway_id, server_id)
 
-async def end_giveaway(giveaway_id):
-    if giveaway_id not in giveaways:
-        return
+async def end_giveaway(giveaway_id, server_id=None):
+    # Buscar el sorteo en el servidor específico o en global
+    giveaway = None
+    giveaway_source = None
     
-    giveaway = giveaways[giveaway_id]
+    if server_id and 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
+        if giveaway_id in data['servers'][server_id]['giveaways']:
+            giveaway = data['servers'][server_id]['giveaways'][giveaway_id]
+            giveaway_source = 'server'
+    
+    if not giveaway and giveaway_id in giveaways:
+        giveaway = giveaways[giveaway_id]
+        giveaway_source = 'global'
+    
+    if not giveaway:
+        return
     
     try:
         channel = bot.get_channel(giveaway['channel_id'])
@@ -2539,8 +2790,12 @@ async def end_giveaway(giveaway_id):
             embed.set_field_at(2, name='👥 Participantes', value='0', inline=True)
             await message.edit(embed=embed)
             
-            del giveaways[giveaway_id]
-            data['giveaways'] = giveaways
+            # Eliminar del servidor o global
+            if giveaway_source == 'server' and server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+            elif giveaway_id in giveaways:
+                del giveaways[giveaway_id]
+                data['giveaways'] = giveaways
             save_data()
             return
         
@@ -2607,6 +2862,7 @@ async def end_giveaway(giveaway_id):
             await message.edit(embed=embed)
         
         # Eliminar mensajes de anuncios del canal de anuncios
+        giveaway_announcement_channel_id = get_server_setting(channel.guild.id, 'giveaway_announcement_channel', data['config'].get('giveaway_announcement_channel'))
         if giveaway_announcement_channel_id and 'announcement_messages' in giveaway:
             try:
                 announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
@@ -2622,8 +2878,11 @@ async def end_giveaway(giveaway_id):
                 print(f'[Sorteo] Error al eliminar mensajes de anuncio: {e}')
         
         # Eliminar sorteo de la lista
-        del giveaways[giveaway_id]
-        data['giveaways'] = giveaways
+        if giveaway_source == 'server' and server_id:
+            del data['servers'][server_id]['giveaways'][giveaway_id]
+        elif giveaway_id in giveaways:
+            del giveaways[giveaway_id]
+            data['giveaways'] = giveaways
         save_data()
         
         print(f'[Sorteo] Sorteo "{giveaway["prize"]}" finalizado. Ganadores: {len(winners_mentions)}')
@@ -2637,8 +2896,21 @@ async def end_giveaway(giveaway_id):
 async def end_giveaway_command(interaction: discord.Interaction, message_id: str):
     try:
         message_id_int = int(message_id)
-        if str(message_id_int) in giveaways:
+        server_id = str(interaction.guild.id)
+        
+        # Buscar en el servidor específico
+        found = False
+        if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
+            if str(message_id_int) in data['servers'][server_id]['giveaways']:
+                await end_giveaway(str(message_id_int), server_id)
+                found = True
+        
+        # Fallback a global
+        if not found and str(message_id_int) in giveaways:
             await end_giveaway(str(message_id_int))
+            found = True
+        
+        if found:
             await interaction.response.send_message('✅ Sorteo finalizado manualmente')
         else:
             await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
@@ -2722,11 +2994,13 @@ async def test_log(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal para notificaciones')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_notifications_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    data['config']['notifications_channel'] = channel.id
+    set_server_setting(interaction.guild.id, 'notifications_channel', channel.id)
+    data['config']['notifications_channel'] = channel.id  # Guardar en global para compatibilidad
     global notifications_channel_id
     notifications_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}')
+    print(f'[Config] Canal de notificaciones configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_notification_role', description='Configura el rol para un tipo de notificación')
 @discord.app_commands.describe(
@@ -2741,12 +3015,14 @@ async def config_notification_role(interaction: discord.Interaction, notificatio
         await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
         return
     
-    if not data['config']['notification_roles']:
-        data['config']['notification_roles'] = {}
+    notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', data['config'].get('notification_roles', {}))
     
-    data['config']['notification_roles'][notification_type] = role.id
-    global notification_roles
-    notification_roles = data['config']['notification_roles']
+    if not notification_roles:
+        notification_roles = {}
+    
+    notification_roles[notification_type] = role.id
+    set_server_setting(interaction.guild.id, 'notification_roles', notification_roles)
+    data['config']['notification_roles'] = notification_roles  # Guardar en global para compatibilidad
     save_data()
     
     await interaction.response.send_message(f'✅ Rol de notificación para {notification_type} configurado: {role.mention}')
@@ -2763,6 +3039,7 @@ async def subscribe(interaction: discord.Interaction, notification_type: str):
         return
     
     user_id = str(interaction.user.id)
+    notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', data['config'].get('notification_roles', {}))
     
     if not data['user_notifications']:
         data['user_notifications'] = {}
@@ -2772,8 +3049,6 @@ async def subscribe(interaction: discord.Interaction, notification_type: str):
     
     if notification_type not in data['user_notifications'][user_id]:
         data['user_notifications'][user_id].append(notification_type)
-        global user_notifications
-        user_notifications = data['user_notifications']
         save_data()
         
         # Asignar rol si existe
@@ -2799,6 +3074,7 @@ async def unsubscribe(interaction: discord.Interaction, notification_type: str):
         return
     
     user_id = str(interaction.user.id)
+    notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', data['config'].get('notification_roles', {}))
     
     if user_id in data['user_notifications'] and notification_type in data['user_notifications'][user_id]:
         data['user_notifications'][user_id].remove(notification_type)
@@ -2820,6 +3096,7 @@ async def unsubscribe(interaction: discord.Interaction, notification_type: str):
 @bot.tree.command(name='my_subscriptions', description='Muestra tus suscripciones actuales')
 async def my_subscriptions(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
+    notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', data['config'].get('notification_roles', {}))
     
     valid_types = ['streams', 'giveaways', 'announcements', 'events']
     
@@ -2875,6 +3152,8 @@ async def send_message(interaction: discord.Interaction, channel: discord.TextCh
 )
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def send_announcement(interaction: discord.Interaction, message: str, important: bool = False):
+    notifications_channel_id = get_server_setting(interaction.guild.id, 'notifications_channel', data['config'].get('notifications_channel'))
+    
     if not notifications_channel_id:
         await interaction.response.send_message('❌ Canal de notificaciones no configurado', ephemeral=True)
         return
@@ -2897,6 +3176,8 @@ async def send_announcement(interaction: discord.Interaction, message: str, impo
 )
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def send_event(interaction: discord.Interaction, event_name: str, description: str, date: str):
+    notifications_channel_id = get_server_setting(interaction.guild.id, 'notifications_channel', data['config'].get('notifications_channel'))
+    
     if not notifications_channel_id:
         await interaction.response.send_message('❌ Canal de notificaciones no configurado', ephemeral=True)
         return
@@ -2919,10 +3200,19 @@ async def ticket(interaction: discord.Interaction):
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
         return
     
-    category_id = data['config']['ticket_category']
+    server_id = str(interaction.guild.id)
+    category_id = get_server_setting(interaction.guild.id, 'ticket_category', data['config'].get('ticket_category'))
     category = bot.get_channel(category_id) if category_id else None
     
-    ticket_num = len(data['tickets']) + 1
+    # Inicializar estructura de tickets del servidor
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'tickets' not in data['servers'][server_id]:
+        data['servers'][server_id]['tickets'] = {}
+    
+    ticket_num = len(data['servers'][server_id]['tickets']) + 1
     
     overwrites = {
         interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False, send_messages=False),
@@ -2936,10 +3226,12 @@ async def ticket(interaction: discord.Interaction):
         overwrites=overwrites
     )
     
-    data['tickets'][str(channel.id)] = {
+    data['servers'][server_id]['tickets'][str(channel.id)] = {
         'user_id': str(interaction.user.id),
         'created_at': datetime.now().isoformat()
     }
+    # También guardar en global para compatibilidad
+    data['tickets'][str(channel.id)] = data['servers'][server_id]['tickets'][str(channel.id)]
     save_data()
     
     # Log de ticket creado
@@ -2971,7 +3263,17 @@ async def close(interaction: discord.Interaction):
         await interaction.response.send_message('Este comando solo funciona en canales de tickets.', ephemeral=True)
         return
     
-    del data['tickets'][str(interaction.channel.id)]
+    server_id = str(interaction.guild.id)
+    
+    # Eliminar del servidor específico
+    if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+        if str(interaction.channel.id) in data['servers'][server_id]['tickets']:
+            del data['servers'][server_id]['tickets'][str(interaction.channel.id)]
+    
+    # También eliminar de global para compatibilidad
+    if str(interaction.channel.id) in data['tickets']:
+        del data['tickets'][str(interaction.channel.id)]
+    
     save_data()
     
     await interaction.response.send_message('🔒 Cerrando ticket en 5 segundos...')
@@ -3128,16 +3430,29 @@ async def member_info(interaction: discord.Interaction, user: discord.Member = N
 @discord.app_commands.describe(member='Usuario a advertir')
 @discord.app_commands.checks.has_permissions(kick_members=True)
 async def warn(interaction: discord.Interaction, member: discord.Member):
+    server_id = str(interaction.guild.id)
     user_id = str(member.id)
     
-    if user_id not in data['warns']:
-        data['warns'][user_id] = []
+    # Inicializar estructura de warns del servidor
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'warns' not in data['servers'][server_id]:
+        data['servers'][server_id]['warns'] = {}
     
-    data['warns'][user_id].append({
+    if user_id not in data['servers'][server_id]['warns']:
+        data['servers'][server_id]['warns'][user_id] = []
+    
+    data['servers'][server_id]['warns'][user_id].append({
         'reason': 'Advertencia',
         'moderator': str(interaction.user.id),
         'date': datetime.now().isoformat()
     })
+    # También guardar en global para compatibilidad
+    if user_id not in data['warns']:
+        data['warns'][user_id] = []
+    data['warns'][user_id] = data['servers'][server_id]['warns'][user_id]
     save_data()
     
     # Log de advertencia
@@ -3149,12 +3464,12 @@ async def warn(interaction: discord.Interaction, member: discord.Member):
         fields=[
             {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
             {'name': 'Usuario advertido', 'value': member.name, 'inline': True},
-            {'name': 'Total advertencias', 'value': str(len(data['warns'][user_id])), 'inline': True}
+            {'name': 'Total advertencias', 'value': str(len(data['servers'][server_id]['warns'][user_id])), 'inline': True}
         ],
         author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
     )
     
-    await interaction.response.send_message(f'⚠️ {member.mention} ha sido advertido. Total: {len(data["warns"][user_id])}')
+    await interaction.response.send_message(f'⚠️ {member.mention} ha sido advertido. Total: {len(data["servers"][server_id]["warns"][user_id])}')
 
 @bot.tree.command(name='kick', description='Expulsa a un usuario')
 @discord.app_commands.describe(member='Usuario a expulsar')
