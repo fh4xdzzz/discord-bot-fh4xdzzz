@@ -1133,13 +1133,20 @@ async def on_invite_use(invite):
 async def assign_auto_roles(member):
     if not auto_roles:
         return
-    
+
     try:
+        bot_role = member.guild.me.top_role
+        print(f'[Auto-Roles] Rol del bot: {bot_role.name} (posición: {bot_role.position})')
+
         for role_id in auto_roles:
             role = member.guild.get_role(role_id)
             if role:
-                await member.add_roles(role)
-                print(f'[Auto-Roles] Asignado rol {role.name} a {member.name}')
+                print(f'[Auto-Roles] Intentando asignar rol: {role.name} (posición: {role.position})')
+                if role.position >= bot_role.position:
+                    print(f'[Auto-Roles] ERROR: Rol {role.name} está por encima o al mismo nivel que el rol del bot')
+                else:
+                    await member.add_roles(role)
+                    print(f'[Auto-Roles] Asignado rol {role.name} a {member.name}')
     except Exception as e:
         print(f'Error al asignar auto-roles a {member.name}: {e}')
 
