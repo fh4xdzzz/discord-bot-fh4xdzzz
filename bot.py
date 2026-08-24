@@ -1126,6 +1126,327 @@ async def on_invite_use(invite):
             {'name': 'Código', 'value': invite.code, 'inline': True},
             {'name': 'Usos totales', 'value': str(invite.uses), 'inline': True},
             {'name': 'Creador', 'value': invite.inviter.name if invite.inviter else 'Desconocido', 'inline': True}
+        ],
+        author={'name': invite.inviter.name, 'icon_url': invite.inviter.display_avatar.url} if invite.inviter else None
+    )
+
+# Evento de movimiento de voz (extremadamente detallado)
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Usuario se une a un canal de voz
+    if after.channel and not before.channel:
+        await send_log(
+            guild=member.guild,
+            title='🎤 Usuario se unió a canal de voz',
+            description=f'{member.mention} se unió a {after.channel.mention}',
+            color=0x2ecc71,
+            fields=[
+                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                {'name': 'Canal', 'value': after.channel.name, 'inline': True},
+                {'name': 'Miembros en canal', 'value': str(len(after.channel.members)), 'inline': True}
+            ],
+            author={'name': member.name, 'icon_url': member.display_avatar.url}
+        )
+
+    # Usuario sale de un canal de voz
+    elif before.channel and not after.channel:
+        await send_log(
+            guild=member.guild,
+            title='🎤 Usuario salió de canal de voz',
+            description=f'{member.mention} salió de {before.channel.mention}',
+            color=0xe74c3c,
+            fields=[
+                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                {'name': 'Canal anterior', 'value': before.channel.name, 'inline': True},
+                {'name': 'Tiempo en canal', 'value': 'N/A', 'inline': True}
+            ],
+            author={'name': member.name, 'icon_url': member.display_avatar.url}
+        )
+
+    # Usuario cambia de canal de voz
+    elif before.channel and after.channel and before.channel != after.channel:
+        await send_log(
+            guild=member.guild,
+            title='🎤 Usuario cambió de canal de voz',
+            description=f'{member.mention} se movió de {before.channel.mention} a {after.channel.mention}',
+            color=0xf39c12,
+            fields=[
+                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                {'name': 'Canal anterior', 'value': before.channel.name, 'inline': True},
+                {'name': 'Canal nuevo', 'value': after.channel.name, 'inline': True}
+            ],
+            author={'name': member.name, 'icon_url': member.display_avatar.url}
+        )
+
+    # Usuario activa/desactiva micrófono
+    elif before.self_mute != after.self_mute:
+        status = 'activó' if after.self_mute else 'desactivó'
+        await send_log(
+            guild=member.guild,
+            title='🎤 Micrófono cambiado',
+            description=f'{member.mention} {status} su micrófono en {after.channel.mention if after.channel else "fuera de canal"}',
+            color=0x95a5a6,
+            fields=[
+                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                {'name': 'Estado', 'value': 'Muteado' if after.self_mute else 'Desmuteado', 'inline': True}
+            ],
+            author={'name': member.name, 'icon_url': member.display_avatar.url}
+        )
+
+    # Usuario activa/desactiva sonido
+    elif before.self_deaf != after.self_deaf:
+        status = 'activó' if after.self_deaf else 'desactivó'
+        await send_log(
+            guild=member.guild,
+            title='🎤 Sonido cambiado',
+            description=f'{member.mention} {status} su sonido en {after.channel.mention if after.channel else "fuera de canal"}',
+            color=0x95a5a6,
+            fields=[
+                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                {'name': 'Estado', 'value': 'Sordo' if after.self_deaf else 'Escuchando', 'inline': True}
+            ],
+            author={'name': member.name, 'icon_url': member.display_avatar.url}
+        )
+
+# Evento de mensaje editado
+@bot.event
+async def on_message_edit(before, after):
+    if before.author.bot:
+        return
+
+    await send_log(
+        guild=after.guild,
+        title='✏️ Mensaje Editado',
+        description=f'{before.author.mention} editó un mensaje en {before.channel.mention}',
+        color=0xf39c12,
+        fields=[
+            {'name': 'Usuario', 'value': before.author.name, 'inline': True},
+            {'name': 'Canal', 'value': before.channel.name, 'inline': True},
+            {'name': 'Antes', 'value': before.content[:200] + '...' if len(before.content) > 200 else before.content, 'inline': False},
+            {'name': 'Después', 'value': after.content[:200] + '...' if len(after.content) > 200 else after.content, 'inline': False}
+        ],
+        author={'name': before.author.name, 'icon_url': before.author.display_avatar.url}
+    )
+
+# Evento de reacción agregada
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+
+    await send_log(
+        guild=reaction.message.guild,
+        title='👍 Reacción Agregada',
+        description=f'{user.mention} reaccionó con {reaction.emoji} a un mensaje en {reaction.message.channel.mention}',
+        color=0x2ecc71,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'Emoji', 'value': str(reaction.emoji), 'inline': True},
+            {'name': 'Canal', 'value': reaction.message.channel.name, 'inline': True},
+            {'name': 'Mensaje', 'value': reaction.message.content[:100] + '...' if len(reaction.message.content) > 100 else reaction.message.content, 'inline': False}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url}
+    )
+
+# Evento de reacción removida
+@bot.event
+async def on_reaction_remove(reaction, user):
+    if user.bot:
+        return
+
+    await send_log(
+        guild=reaction.message.guild,
+        title='👎 Reacción Removida',
+        description=f'{user.mention} removió su reacción {reaction.emoji} de un mensaje en {reaction.message.channel.mention}',
+        color=0xe74c3c,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'Emoji', 'value': str(reaction.emoji), 'inline': True},
+            {'name': 'Canal', 'value': reaction.message.channel.name, 'inline': True}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url}
+    )
+
+# Evento de usuario escribiendo
+@bot.event
+async def on_typing(channel, user, when):
+    if user.bot:
+        return
+
+    await send_log(
+        guild=channel.guild,
+        title='⌨️ Usuario Escribiendo',
+        description=f'{user.mention} está escribiendo en {channel.mention}',
+        color=0x95a5a6,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'Canal', 'value': channel.name, 'inline': True},
+            {'name': 'Hora', 'value': when.strftime('%H:%M:%S'), 'inline': True}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url}
+    )
+
+# Evento de cambio de presencia (estado/juego)
+@bot.event
+async def on_presence_update(before, after):
+    if before.bot or after.bot:
+        return
+
+    # Cambio de estado (online, idle, dnd, offline)
+    if before.status != after.status:
+        await send_log(
+            guild=after.guild if after.guild else before.guild,
+            title='🟢 Cambio de Estado',
+            description=f'{after.mention} cambió su estado a {str(after.status)}',
+            color=0x95a5a6,
+            fields=[
+                {'name': 'Usuario', 'value': after.name, 'inline': True},
+                {'name': 'Estado anterior', 'value': str(before.status), 'inline': True},
+                {'name': 'Estado nuevo', 'value': str(after.status), 'inline': True}
+            ],
+            author={'name': after.name, 'icon_url': after.display_avatar.url}
+        )
+
+    # Cambio de actividad (juego, streaming, etc.)
+    if before.activity != after.activity:
+        if after.activity:
+            await send_log(
+                guild=after.guild if after.guild else before.guild,
+                title='🎮 Cambio de Actividad',
+                description=f'{after.mention} cambió su actividad',
+                color=0x3498db,
+                fields=[
+                    {'name': 'Usuario', 'value': after.name, 'inline': True},
+                    {'name': 'Actividad', 'value': f'{after.activity.type.name}: {after.activity.name}', 'inline': True}
+                ],
+                author={'name': after.name, 'icon_url': after.display_avatar.url}
+            )
+
+# Evento de cambio de perfil de usuario
+@bot.event
+async def on_user_update(before, after):
+    if before.bot or after.bot:
+        return
+
+    # Cambio de nombre
+    if before.name != after.name:
+        await send_log(
+            guild=None,  # No tiene guild específico
+            title='👤 Cambio de Nombre',
+            description=f'Usuario cambió su nombre de {before.name} a {after.name}',
+            color=0xf39c12,
+            fields=[
+                {'name': 'Nombre anterior', 'value': before.name, 'inline': True},
+                {'name': 'Nombre nuevo', 'value': after.name, 'inline': True},
+                {'name': 'ID', 'value': str(after.id), 'inline': True}
+            ],
+            author={'name': after.name, 'icon_url': after.display_avatar.url}
+        )
+
+    # Cambio de avatar
+    if before.avatar != after.avatar:
+        await send_log(
+            guild=None,
+            title='🖼️ Cambio de Avatar',
+            description=f'{after.mention} cambió su avatar',
+            color=0x3498db,
+            fields=[
+                {'name': 'Usuario', 'value': after.name, 'inline': True},
+                {'name': 'ID', 'value': str(after.id), 'inline': True}
+            ],
+            author={'name': after.name, 'icon_url': after.display_avatar.url},
+            thumbnail=after.display_avatar.url
+        )
+
+# Evento de baneo de usuario
+@bot.event
+async def on_member_ban(guild, user):
+    await send_log(
+        guild=guild,
+        title='🔨 Usuario Baneado',
+        description=f'{user.mention} ha sido baneado del servidor',
+        color=0xe74c3c,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'ID', 'value': str(user.id), 'inline': True}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url if user.display_avatar else None}
+    )
+
+# Evento de desbaneo de usuario
+@bot.event
+async def on_member_unban(guild, user):
+    await send_log(
+        guild=guild,
+        title='🔓 Usuario Desbaneado',
+        description=f'{user.mention} ha sido desbaneado del servidor',
+        color=0x2ecc71,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'ID', 'value': str(user.id), 'inline': True}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url if user.display_avatar else None}
+    )
+
+# Evento de actualización del servidor
+@bot.event
+async def on_guild_update(before, after):
+    # Cambio de nombre del servidor
+    if before.name != after.name:
+        await send_log(
+            guild=after,
+            title='🏷️ Cambio de Nombre del Servidor',
+            description=f'El servidor cambió de nombre',
+            color=0xf39c12,
+            fields=[
+                {'name': 'Nombre anterior', 'value': before.name, 'inline': True},
+                {'name': 'Nombre nuevo', 'value': after.name, 'inline': True}
+            ]
+        )
+
+    # Cambio de icono del servidor
+    if before.icon != after.icon:
+        await send_log(
+            guild=after,
+            title='🖼️ Cambio de Icono del Servidor',
+            description=f'El servidor cambió su icono',
+            color=0x3498db,
+            thumbnail=after.icon.url if after.icon else None
+        )
+
+# Evento de creación de hilo
+@bot.event
+async def on_thread_create(thread):
+    await send_log(
+        guild=thread.guild,
+        title='🧵 Hilo Creado',
+        description=f'Nuevo hilo creado: {thread.mention}',
+        color=0x2ecc71,
+        fields=[
+            {'name': 'Nombre', 'value': thread.name, 'inline': True},
+            {'name': 'Creador', 'value': thread.owner.mention if thread.owner else 'Desconocido', 'inline': True},
+            {'name': 'Canal padre', 'value': thread.parent.mention, 'inline': True}
+        ]
+    )
+
+# Evento de eliminación de hilo
+@bot.event
+async def on_thread_delete(thread):
+    await send_log(
+        guild=thread.guild,
+        title='🧵 Hilo Eliminado',
+        description=f'Hilo eliminado: {thread.name}',
+        color=0xe74c3c,
+        fields=[
+            {'name': 'Nombre', 'value': thread.name, 'inline': True},
+            {'name': 'Canal padre', 'value': thread.parent.mention, 'inline': True}
+        ]
+    )
+        color=0x3498db,
+        fields=[
+            {'name': 'Código', 'value': invite.code, 'inline': True},
+            {'name': 'Usos totales', 'value': str(invite.uses), 'inline': True},
+            {'name': 'Creador', 'value': invite.inviter.name if invite.inviter else 'Desconocido', 'inline': True}
         ]
     )
 
@@ -1289,6 +1610,21 @@ class HelpView(discord.ui.View):
                 'commands': [
                     {'name': '/config_add_banned_word', 'desc': 'Agrega una palabra prohibida'},
                     {'name': '/config_remove_banned_word', 'desc': 'Elimina una palabra prohibida'}
+                ]
+            },
+            {
+                'title': '📜 Logs Avanzados',
+                'emoji': '📜',
+                'color': 0x9b59b6,
+                'commands': [
+                    {'name': 'Logs de Voz', 'desc': 'Registra todos los movimientos de voz'},
+                    {'name': 'Logs de Mensajes', 'desc': 'Registra edición y eliminación de mensajes'},
+                    {'name': 'Logs de Reacciones', 'desc': 'Registra todas las reacciones'},
+                    {'name': 'Logs de Estados', 'desc': 'Registra cambios de estado y actividad'},
+                    {'name': 'Logs de Perfil', 'desc': 'Registra cambios de nombre y avatar'},
+                    {'name': 'Logs de Servidor', 'desc': 'Registra cambios en el servidor'},
+                    {'name': 'Logs de Ban/Unban', 'desc': 'Registra baneos y desbaneos'},
+                    {'name': 'Logs de Hilos', 'desc': 'Registra creación y eliminación de hilos'}
                 ]
             },
             {
