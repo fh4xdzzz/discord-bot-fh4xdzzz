@@ -1330,6 +1330,19 @@ class HelpView(discord.ui.View):
         self.current_page = len(self.pages) - 1
         await interaction.response.edit_message(embed=self.create_embed(), view=self)
 
+@bot.tree.command(name='bot_servers', description='Muestra en qué servidores está el bot')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def bot_servers(interaction: discord.Interaction):
+    servers = []
+    for guild in bot.guilds:
+        servers.append(f"🏠 **{guild.name}** (ID: {guild.id}) - {guild.member_count} miembros")
+    
+    if not servers:
+        await interaction.response.send_message("El bot no está en ningún servidor.", ephemeral=True)
+    else:
+        message = f"🤖 **Bot en {len(servers)} servidor(es):**\n\n" + "\n".join(servers)
+        await interaction.response.send_message(message, ephemeral=True)
+
 @bot.tree.command(name='ayuda', description='Muestra el panel de comandos del bot')
 async def ayuda(interaction: discord.Interaction):
     view = HelpView(interaction)
