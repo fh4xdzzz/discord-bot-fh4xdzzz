@@ -1012,58 +1012,67 @@ async def on_member_join(member):
 # Evento de reacción para verificación
 @bot.event
 async def on_raw_reaction_add(payload):
-    # Verificación
-    if payload.message_id == verification_message_id and str(payload.emoji) == '✅':
-        try:
-            guild = bot.get_guild(payload.guild_id)
-            member = guild.get_member(payload.user_id)
-            
-            if member and str(member.id) not in verified_users:
-                # Dar rol de verificación
-                role = guild.get_role(verification_role_id)
-                if role:
-                    await member.add_roles(role)
-                    print(f'[Verificación] Rol {role.name} asignado a {member.name}')
-                    
-                    # Log de verificación
-                    await send_log(
-                        guild=guild,
-                        title='Usuario Verificado',
-                        description=f'{member.mention} ha sido verificado correctamente',
-                        color=0x2ecc71,
-                        fields=[
-                            {'name': 'Usuario', 'value': member.name, 'inline': True},
-                            {'name': 'Rol asignado', 'value': role.name, 'inline': True}
-                        ],
-                        author={'name': member.name, 'icon_url': member.display_avatar.url}
-                    )
+    # Verificación - usar configuración específica del servidor
+    server_id = str(payload.guild_id)
+    if 'servers' in data and server_id in data['servers']:
+        server_verification_message_id = data['servers'][server_id].get('verification_message_id')
+        server_verification_role_id = data['servers'][server_id].get('verification_role')
+        server_verified_users = data['servers'][server_id].get('verified_users', [])
+
+        if payload.message_id == server_verification_message_id and str(payload.emoji) == '✅':
+            try:
+                guild = bot.get_guild(payload.guild_id)
+                member = guild.get_member(payload.user_id)
+
+                if member and str(member.id) not in server_verified_users:
+                    # Dar rol de verificación del servidor
+                    role = guild.get_role(server_verification_role_id)
+                    if role:
+                        await member.add_roles(role)
+                        print(f'[Verificación] Rol {role.name} asignado a {member.name} en servidor {guild.name}')
+
+                        # Log de verificación
+                        await send_log(
+                            guild=guild,
+                            title='Usuario Verificado',
+                            description=f'{member.mention} ha sido verificado correctamente',
+                            color=0x2ecc71,
+                            fields=[
+                                {'name': 'Usuario', 'value': member.name, 'inline': True},
+                                {'name': 'Rol asignado', 'value': role.name, 'inline': True}
+                            ],
+                            author={'name': member.name, 'icon_url': member.display_avatar.url}
+                        )
+                    else:
+                        print(f'[Verificación] Rol de verificación no encontrado en servidor {guild.name}: {server_verification_role_id}')
+                        return
+
+                    # Marcar como verificado en el servidor específico
+                    server_verified_users.append(str(member.id))
+                    data['servers'][server_id]['verified_users'] = server_verified_users
+                    save_data()
+
+                    # Asignar auto-roles del servidor
+                    server_auto_roles = data['servers'][server_id].get('auto_roles', [])
+                    if server_auto_roles:
+                        for role_id in server_auto_roles:
+                            auto_role = guild.get_role(role_id)
+                            if auto_role:
+                                await member.add_roles(auto_role)
+                                print(f'[Auto-Roles] Auto-rol {auto_role.name} asignado a {member.name} en servidor {guild.name}')
+
+                    # Enviar confirmación
+                    channel = bot.get_channel(payload.channel_id)
+                    if channel:
+                        await channel.send(f'✅ {member.mention} ha sido verificado y ahora tiene acceso completo.')
+                        print(f'[Verificación] {member.name} verificado exitosamente en servidor {guild.name}')
                 else:
-                    print(f'[Verificación] Rol de verificación no encontrado: {verification_role_id}')
-                    return
-                
-                # Marcar como verificado
-                verified_users.append(str(member.id))
-                data['config']['verified_users'] = verified_users
-                save_data()
-
-                # Asignar auto-roles
-                try:
-                    await assign_auto_roles(member)
-                except discord.errors.Forbidden:
-                    print(f'[Verificación] Error: El bot no tiene permisos para asignar roles (Manage Roles)')
-
-                # Enviar confirmación
-                channel = bot.get_channel(payload.channel_id)
-                if channel:
-                    await channel.send(f'✅ {member.mention} ha sido verificado y ahora tiene acceso completo.')
-                    print(f'[Verificación] {member.name} verificado exitosamente')
-            else:
-                print(f'[Verificación] {member.name} ya está verificado')
-        except discord.errors.Forbidden as e:
-            print(f'[Verificación] Error de permisos: {e}')
-            print(f'[Verificación] El bot necesita permisos: Manage Roles, Send Messages')
-        except Exception as e:
-            print(f'Error en verificación: {e}')
+                    print(f'[Verificación] {member.name} ya está verificado en servidor {guild.name}')
+            except discord.errors.Forbidden as e:
+                print(f'[Verificación] Error de permisos en servidor {guild.name}: {e}')
+                print(f'[Verificación] El bot necesita permisos: Manage Roles, Send Messages')
+            except Exception as e:
+                print(f'Error en verificación: {e}')
     
     # Sorteos
     if str(payload.message_id) in giveaways:
@@ -2262,76 +2271,112 @@ async def list_auto_roles(interaction: discord.Interaction):
 @discord.app_commands.describe(channel='Canal de verificación', role='Rol que se dará al verificar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_verification(interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role):
+    # Guardar configuración específica del servidor
+    if 'servers' not in data:
+        data['servers'] = {}
+    server_id = str(interaction.guild.id)
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+
+    data['servers'][server_id]['verification_channel'] = channel.id
+    data['servers'][server_id]['verification_role'] = role.id
+    data['servers'][server_id]['verified_users'] = data['servers'][server_id].get('verified_users', [])
+
+    # También guardar en config global para compatibilidad
     data['config']['verification_channel'] = channel.id
     data['config']['verification_role'] = role.id
-    global verification_channel_id, verification_role_id
-    verification_channel_id = channel.id
-    verification_role_id = role.id
+
     save_data()
-    
-    await interaction.response.send_message(f'✅ Sistema de verificación configurado: {channel.mention} con rol {role.mention}')
+
+    await interaction.response.send_message(f'✅ Sistema de verificación configurado en servidor {interaction.guild.name}: {channel.mention} con rol {role.mention}')
+    print(f'[Verificación] Configuración actualizada en servidor {interaction.guild.name} - Canal: {channel.name}, Rol: {role.name}')
 
 @bot.tree.command(name='create_verification_message', description='Crea el mensaje de verificación en el canal configurado')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_verification_message(interaction: discord.Interaction):
-    if not verification_channel_id or not verification_role_id:
+    # Usar configuración específica del servidor actual
+    server_id = str(interaction.guild.id)
+    if 'servers' not in data or server_id not in data['servers']:
         await interaction.response.send_message('❌ Primero configura el sistema de verificación con /config_verification', ephemeral=True)
         return
-    
-    channel = bot.get_channel(verification_channel_id)
+
+    server_verification_channel = data['servers'][server_id].get('verification_channel')
+    server_verification_role = data['servers'][server_id].get('verification_role')
+
+    if not server_verification_channel or not server_verification_role:
+        await interaction.response.send_message('❌ Primero configura el sistema de verificación con /config_verification', ephemeral=True)
+        return
+
+    channel = bot.get_channel(server_verification_channel)
     if not channel:
         await interaction.response.send_message('❌ Canal de verificación no encontrado', ephemeral=True)
         return
-    
+
     try:
         embed = discord.Embed(
             title='🔒 VERIFICACIÓN REQUERIDA',
             description='Reacciona con ✅ para obtener acceso completo al servidor',
             color=0xFF6B6B
         )
-        
+
         embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
         embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ para obtener acceso', inline=False)
         embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
         embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
         embed.set_thumbnail(url=bot.user.display_avatar.url)
-        
+
         message = await channel.send(embed=embed)
         await message.add_reaction('✅')
-        
-        global verification_message_id
-        verification_message_id = message.id
-        data['config']['verification_message_id'] = message.id
+
+        # Guardar el message_id específico del servidor
+        data['servers'][server_id]['verification_message_id'] = message.id
         save_data()
-        
+
         await interaction.response.send_message(f'✅ Mensaje de verificación creado en {channel.mention}')
+        print(f'[Verificación] Mensaje creado en servidor {interaction.guild.name} (ID: {message.id})')
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al crear mensaje de verificación: {e}', ephemeral=True)
+        print(f'[Verificación] Error al crear mensaje: {e}')
 
 @bot.tree.command(name='manual_verify', description='Verifica manualmente a un usuario')
 @discord.app_commands.describe(member='Usuario a verificar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def manual_verify(interaction: discord.Interaction, member: discord.Member):
-    if not verification_role_id:
+    # Usar configuración específica del servidor
+    server_id = str(interaction.guild.id)
+    if 'servers' not in data or server_id not in data['servers']:
         await interaction.response.send_message('❌ Sistema de verificación no configurado', ephemeral=True)
         return
-    
+
+    server_verification_role_id = data['servers'][server_id].get('verification_role')
+    server_verified_users = data['servers'][server_id].get('verified_users', [])
+
+    if not server_verification_role_id:
+        await interaction.response.send_message('❌ Sistema de verificación no configurado', ephemeral=True)
+        return
+
     try:
-        role = interaction.guild.get_role(verification_role_id)
+        role = interaction.guild.get_role(server_verification_role_id)
         if role:
             await member.add_roles(role)
-            print(f'[Manual Verify] Rol {role.name} asignado a {member.name}')
-            
-            if str(member.id) not in verified_users:
-                verified_users.append(str(member.id))
-                data['config']['verified_users'] = verified_users
+            print(f'[Manual Verify] Rol {role.name} asignado a {member.name} en servidor {interaction.guild.name}')
+
+            if str(member.id) not in server_verified_users:
+                server_verified_users.append(str(member.id))
+                data['servers'][server_id]['verified_users'] = server_verified_users
                 save_data()
-                print(f'[Manual Verify] {member.name} marcado como verificado')
-            
-            await assign_auto_roles(member)
-            print(f'[Manual Verify] Auto-roles asignados a {member.name}')
-            
+                print(f'[Manual Verify] {member.name} marcado como verificado en servidor {interaction.guild.name}')
+
+            # Asignar auto-roles del servidor
+            server_auto_roles = data['servers'][server_id].get('auto_roles', [])
+            if server_auto_roles:
+                for role_id in server_auto_roles:
+                    auto_role = interaction.guild.get_role(role_id)
+                    if auto_role:
+                        await member.add_roles(auto_role)
+                        print(f'[Manual Verify] Auto-rol {auto_role.name} asignado a {member.name} en servidor {interaction.guild.name}')
+
             await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente')
         else:
             await interaction.response.send_message('❌ Rol de verificación no encontrado', ephemeral=True)
