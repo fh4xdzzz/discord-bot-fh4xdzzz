@@ -2069,7 +2069,7 @@ async def test_log(interaction: discord.Interaction):
     await send_log(
         guild=interaction.guild,
         title='Prueba de Logs',
-        description=f'Prueba del sistema de logs por {interaction.mention}',
+        description=f'Prueba del sistema de logs por {interaction.user.mention}',
         color=0x3498db,
         fields=[
             {'name': 'Usuario', 'value': interaction.user.name, 'inline': True},
@@ -2313,6 +2313,151 @@ async def close(interaction: discord.Interaction):
     await interaction.response.send_message('🔒 Cerrando ticket en 5 segundos...')
     await asyncio.sleep(5)
     await interaction.channel.delete()
+
+# Sistema de Gestión de Roles
+@bot.tree.command(name='create_role', description='Crea un nuevo rol')
+@discord.app_commands.describe(
+    name='Nombre del rol',
+    color='Color del rol (hexadecimal)',
+    permissions='¿Rol administrador?'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def create_role(interaction: discord.Interaction, name: str, color: str = '0x3498db', permissions: bool = False):
+    try:
+        # Convertir color hex a entero
+        if color.startswith('0x'):
+            color_int = int(color, 16)
+        else:
+            color_int = int(color, 16)
+        
+        # Crear permisos
+        role_permissions = discord.Permissions(administrator=permissions)
+        
+        role = await interaction.guild.create_role(
+            name=name,
+            color=discord.Color(color_int),
+            permissions=role_permissions
+        )
+        
+        await interaction.response.send_message(f'✅ Rol {role.mention} creado exitosamente')
+        
+        # Log de creación de rol
+        await send_log(
+            guild=interaction.guild,
+            title='🎭 Rol Creado',
+            description=f'{interaction.user.mention} creó el rol {role.mention}',
+            color=0x2ecc71,
+            fields=[
+                {'name': 'Nombre', 'value': role.name, 'inline': True},
+                {'name': 'Color', 'value': str(role.color), 'inline': True},
+                {'name': 'Administrador', 'value': 'Sí' if permissions else 'No', 'inline': True}
+            ],
+            author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+        )
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al crear rol: {e}', ephemeral=True)
+
+@bot.tree.command(name='add_role_to_user', description='Agrega un rol a un usuario')
+@discord.app_commands.describe(
+    user='Usuario',
+    role='Rol a agregar'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def add_role_to_user(interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    try:
+        await user.add_roles(role)
+        await interaction.response.send_message(f'✅ Rol {role.mention} agregado a {user.mention}')
+        
+        # Log de rol asignado
+        await send_log(
+            guild=interaction.guild,
+            title='🎭 Rol Asignado Manualmente',
+            description=f'{interaction.user.mention} asignó {role.mention} a {user.mention}',
+            color=0x2ecc71,
+            fields=[
+                {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
+                {'name': 'Usuario', 'value': user.name, 'inline': True},
+                {'name': 'Rol', 'value': role.name, 'inline': True}
+            ],
+            author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+        )
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+
+@bot.tree.command(name='remove_role_from_user', description='Elimina un rol de un usuario')
+@discord.app_commands.describe(
+    user='Usuario',
+    role='Rol a eliminar'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def remove_role_from_user(interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    try:
+        await user.remove_roles(role)
+        await interaction.response.send_message(f'✅ Rol {role.mention} eliminado de {user.mention}')
+        
+        # Log de rol removido
+        await send_log(
+            guild=interaction.guild,
+            title='🎭 Rol Removido Manualmente',
+            description=f'{interaction.user.mention} eliminó {role.mention} de {user.mention}',
+            color=0xE74C3C,
+            fields=[
+                {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
+                {'name': 'Usuario', 'value': user.name, 'inline': True},
+                {'name': 'Rol', 'value': role.name, 'inline': True}
+            ],
+            author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+        )
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+
+@bot.tree.command(name='list_roles', description='Lista todos los roles del servidor')
+async def list_roles(interaction: discord.Interaction):
+    roles_list = []
+    for role in interaction.guild.roles:
+        if role.name != '@everyone':
+            roles_list.append(f'{role.mention} - {"Admin" if role.permissions.administrator else "Miembro"}')
+    
+    embed = discord.Embed(
+        title='🎭 Roles del Servidor',
+        description=f'Total: {len(roles_list)} roles',
+        color=0x3498db
+    )
+    
+    for i, role_info in enumerate(roles_list[:10], 1):
+        embed.add_field(name=f'Rol {i}', value=role_info, inline=False)
+    
+    if len(roles_list) > 10:
+        embed.add_field(name='...', value=f'y {len(roles_list) - 10} roles más', inline=False)
+    
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name='member_info', description='Muestra información detallada de un usuario')
+@discord.app_commands.describe(user='Usuario (vacío para ver tu propia info)')
+async def member_info(interaction: discord.Interaction, user: discord.Member = None):
+    target = user if user else interaction.user
+    
+    embed = discord.Embed(
+        title=f'👤 Información de {target.name}',
+        color=0x3498db
+    )
+    
+    embed.add_field(name='🆔 ID', value=str(target.id), inline=True)
+    embed.add_field(name='📅 Cuenta creada', value=target.created_at.strftime('%d/%m/%Y'), inline=True)
+    embed.add_field(name='📅 Se unió', value=target.joined_at.strftime('%d/%m/%Y') if target.joined_at else 'Desconocido', inline=True)
+    embed.add_field(name='🎭 Roles', value=str(len(target.roles)), inline=True)
+    embed.add_field(name='🔥 Boost', value 'Sí' if target.premium_since else 'No', inline=True)
+    
+    if target.roles:
+        roles_text = ', '.join([role.mention for role in target.roles if role.name != '@everyone'])[:5]
+        if len(target.roles) > 6:
+            roles_text += f' y {len(target.roles) - 6} más'
+        embed.add_field(name='🎭 Roles principales', value=roles_text, inline=False)
+    
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.set_footer(text=f'Solicitado por {interaction.user.name}')
+    
+    await interaction.response.send_message(embed=embed)
 
 # Moderación
 @bot.tree.command(name='warn', description='Advierte a un usuario')
