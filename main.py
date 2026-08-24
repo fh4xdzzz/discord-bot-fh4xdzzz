@@ -2560,6 +2560,30 @@ async def ban(interaction: discord.Interaction, member: discord.Member):
         await interaction.response.send_message(f'❌ Error: {e}')
 
 
+# Manejador de errores global para comandos
+@bot.tree.error
+async def on_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.MissingPermissions):
+        missing_perms = ", ".join(error.missing_permissions)
+        try:
+            await interaction.response.send_message(f'❌ No tienes permisos. Necesitas: {missing_perms}', ephemeral=True)
+        except discord.errors.NotFound:
+            pass  # La interacción expiró
+    elif isinstance(error, discord.app_commands.CommandNotFound):
+        try:
+            await interaction.response.send_message('❌ Comando no encontrado.', ephemeral=True)
+        except discord.errors.NotFound:
+            pass
+    elif isinstance(error, discord.app_commands.CommandInvokeError):
+        try:
+            await interaction.response.send_message(f'❌ Error al ejecutar el comando: {str(error.original)}', ephemeral=True)
+        except discord.errors.NotFound:
+            pass
+    else:
+        try:
+            await interaction.response.send_message(f'❌ Error: {str(error)}', ephemeral=True)
+        except discord.errors.NotFound:
+            pass
 
 # Iniciar el bot
 bot.run(TOKEN)
