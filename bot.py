@@ -1276,7 +1276,10 @@ class HelpView(discord.ui.View):
                     {'name': '/config_welcome_channel', 'desc': 'Configura el canal de bienvenida'},
                     {'name': '/config_ticket_category', 'desc': 'Configura la categoría de tickets'},
                     {'name': '/config_show', 'desc': 'Muestra la configuración actual'},
-                    {'name': '/config_log_channel', 'desc': 'Configura el canal de logs'}
+                    {'name': '/config_log_channel', 'desc': 'Configura el canal de logs'},
+                    {'name': '/send_message', 'desc': 'Envía mensaje anónimo a un canal'},
+                    {'name': '/sync_commands', 'desc': 'Fuerza sincronización de comandos'},
+                    {'name': '/bot_servers', 'desc': 'Muestra servidores donde está el bot'}
                 ]
             },
             {
