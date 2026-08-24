@@ -1442,13 +1442,6 @@ async def on_thread_delete(thread):
             {'name': 'Canal padre', 'value': thread.parent.mention, 'inline': True}
         ]
     )
-        color=0x3498db,
-        fields=[
-            {'name': 'Código', 'value': invite.code, 'inline': True},
-            {'name': 'Usos totales', 'value': str(invite.uses), 'inline': True},
-            {'name': 'Creador', 'value': invite.inviter.name if invite.inviter else 'Desconocido', 'inline': True}
-        ]
-    )
 
 # Función para asignar auto-roles
 async def assign_auto_roles(member):
