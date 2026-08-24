@@ -1974,7 +1974,13 @@ async def config_show(interaction: discord.Interaction):
 async def config_log_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     data['config']['log_channel'] = channel.id
     save_data()
+
+    # Actualizar la variable global
+    global log_channel_id
+    log_channel_id = channel.id
+
     await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}')
+    print(f'[Logs] Canal de logs configurado: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros')
 @discord.app_commands.describe(role='Rol a asignar automáticamente')
