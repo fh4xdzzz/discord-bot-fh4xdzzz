@@ -902,10 +902,13 @@ async def on_raw_reaction_add(payload):
                 verified_users.append(str(member.id))
                 data['config']['verified_users'] = verified_users
                 save_data()
-                
+
                 # Asignar auto-roles
-                await assign_auto_roles(member)
-                
+                try:
+                    await assign_auto_roles(member)
+                except discord.errors.Forbidden:
+                    print(f'[Verificación] Error: El bot no tiene permisos para asignar roles (Manage Roles)')
+
                 # Enviar confirmación
                 channel = bot.get_channel(payload.channel_id)
                 if channel:
@@ -913,6 +916,9 @@ async def on_raw_reaction_add(payload):
                     print(f'[Verificación] {member.name} verificado exitosamente')
             else:
                 print(f'[Verificación] {member.name} ya está verificado')
+        except discord.errors.Forbidden as e:
+            print(f'[Verificación] Error de permisos: {e}')
+            print(f'[Verificación] El bot necesita permisos: Manage Roles, Send Messages')
         except Exception as e:
             print(f'Error en verificación: {e}')
     
