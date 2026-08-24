@@ -2446,7 +2446,7 @@ async def member_info(interaction: discord.Interaction, user: discord.Member = N
     embed.add_field(name='📅 Cuenta creada', value=target.created_at.strftime('%d/%m/%Y'), inline=True)
     embed.add_field(name='📅 Se unió', value=target.joined_at.strftime('%d/%m/%Y') if target.joined_at else 'Desconocido', inline=True)
     embed.add_field(name='🎭 Roles', value=str(len(target.roles)), inline=True)
-    embed.add_field(name='🔥 Boost', value 'Sí' if target.premium_since else 'No', inline=True)
+    embed.add_field(name='🔥 Boost', value='Sí' if target.premium_since else 'No', inline=True)
     
     if target.roles:
         roles_text = ', '.join([role.mention for role in target.roles if role.name != '@everyone'])[:5]
