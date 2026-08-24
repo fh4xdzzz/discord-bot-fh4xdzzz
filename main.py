@@ -183,6 +183,10 @@ giveaways = data.get('giveaways', {})
 # Sistema de logs
 log_channel_id = data['config'].get('log_channel')
 
+# Sistema de rate limiting para logs
+log_rate_limit = {}  # {user_id: {last_log_time}}
+LOG_RATE_LIMIT_SECONDS = 5  # Máximo 1 log por usuario cada 5 segundos
+
 # Asegurar que log_channel esté en la configuración
 if 'log_channel' not in data['config']:
     data['config']['log_channel'] = None
@@ -710,8 +714,17 @@ async def on_message(message):
     
     await bot.process_commands(message)
 
-    # Log de mensaje enviado (nuevo)
+    # Log de mensaje enviado (nuevo) con rate limiting
     if not message.author.bot:
+        user_id = str(message.author.id)
+        current_time = datetime.now().timestamp()
+
+        # Rate limiting para logs de mensajes
+        if user_id in log_rate_limit:
+            if current_time - log_rate_limit[user_id] < LOG_RATE_LIMIT_SECONDS:
+                return  # Saltar log si muy reciente
+        log_rate_limit[user_id] = current_time
+
         await send_log(
             guild=message.guild,
             title='💬 Mensaje Enviado',
