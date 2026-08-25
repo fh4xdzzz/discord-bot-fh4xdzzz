@@ -1092,22 +1092,24 @@ async def on_member_join(member):
     
     if channel:
         member_count = member.guild.member_count
-        
+        server_name = member.guild.name
+
         embed = discord.Embed(
-            title='🎉 ¡Bienvenido a la Comunidad!',
-            description=f'¡Hola {member.mention}! Gracias por unirte a la comunidad, contigo somos **{member_count} miembros**',
+            title=f'🎉 ¡Bienvenido a la Comunidad de {server_name}!',
+            description=f'¡Hola {member.mention}! Gracias por unirte a la comunidad de **{server_name}**, contigo somos **{member_count} miembros**',
             color=0xFFD700
         )
-        
+
         embed.add_field(name='👤 Usuario', value=member.name, inline=True)
         embed.add_field(name='📊 Miembros', value=str(member_count), inline=True)
+        embed.add_field(name='🏠 Comunidad', value=server_name, inline=True)
         embed.add_field(name='📌 Información', value='Lee las reglas del servidor', inline=False)
         embed.add_field(name='🎮 Comandos', value='Usa /ayuda para ver los comandos del bot', inline=False)
         embed.add_field(name='👋 ¡Disfruta!', value='No dudes en preguntar si necesitas ayuda', inline=False)
-        
+
         embed.set_thumbnail(url=member.display_avatar.url)
         embed.set_image(url=member.display_avatar.url)
-        
+
         await channel.send(embed=embed)
     
     user_id = str(member.id)
