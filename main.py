@@ -1945,7 +1945,8 @@ class HelpView(discord.ui.View):
                 'color': 0x3498db,
                 'commands': [
                     {'name': '/level', 'desc': 'Muestra tu nivel y XP actual'},
-                    {'name': '/top', 'desc': 'Muestra el top 10 usuarios por nivel'}
+                    {'name': '/top', 'desc': 'Muestra el top 10 usuarios por nivel'},
+                    {'name': '/server_stats', 'desc': 'Muestra estadísticas del servidor'}
                 ]
             },
             {
@@ -1966,6 +1967,26 @@ class HelpView(discord.ui.View):
                     {'name': '/add_auto_role', 'desc': 'Agrega un rol automático'},
                     {'name': '/remove_auto_role', 'desc': 'Elimina un rol automático'},
                     {'name': '/list_auto_roles', 'desc': 'Lista los roles automáticos'}
+                ]
+            },
+            {
+                'title': '⭐ Roles por Nivel',
+                'emoji': '⭐',
+                'color': 0xFFD700,
+                'commands': [
+                    {'name': '/add_level_role', 'desc': 'Agrega un rol por nivel'},
+                    {'name': '/remove_level_role', 'desc': 'Elimina un rol por nivel'},
+                    {'name': '/list_level_roles', 'desc': 'Lista roles por nivel'}
+                ]
+            },
+            {
+                'title': '🎭 Roles Reaccionables',
+                'emoji': '🎭',
+                'color': 0x9b59b6,
+                'commands': [
+                    {'name': '/create_role_panel', 'desc': 'Crea panel de roles reaccionables'},
+                    {'name': '/add_reaction_role', 'desc': 'Agrega rol reaccionable'},
+                    {'name': '/list_reaction_roles', 'desc': 'Lista roles reaccionables'}
                 ]
             },
             {
