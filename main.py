@@ -747,10 +747,22 @@ async def on_message(message):
             data['servers'][server_id]['users'][user_id]['level'] += 1
             data['servers'][server_id]['users'][user_id]['xp'] = 0
             new_level = data['servers'][server_id]['users'][user_id]['level']
-            
+
+            # Asignar roles por nivel
+            level_roles = data['servers'][server_id].get('level_roles', {})
+            if new_level in level_roles:
+                role_id = level_roles[new_level]
+                role = message.guild.get_role(role_id)
+                if role:
+                    try:
+                        await message.author.add_roles(role)
+                        print(f'[Level Roles] Rol {role.name} asignado a {message.author.name} por alcanzar nivel {new_level}')
+                    except discord.errors.Forbidden:
+                        print(f'[Level Roles] Error: El bot no tiene permisos para asignar roles (Manage Roles)')
+
             level_channel_id = get_server_setting(message.guild.id, 'level_channel', data['config'].get('level_channel'))
             level_channel = message.channel
-            
+
             if level_channel_id:
                 try:
                     level_channel = bot.get_channel(level_channel_id)
@@ -758,20 +770,20 @@ async def on_message(message):
                         level_channel = level_channel
                 except:
                     pass
-            
+
             embed = discord.Embed(
                 title='¡SUBIDA DE NIVEL!',
                 description=f'¡Felicidades {message.author.mention} has subido al nivel **{new_level}**!',
                 color=0xFFD700
             )
-            
+
             embed.add_field(name='Nuevo Nivel', value=f'**{new_level}**', inline=True)
             embed.add_field(name='XP Total', value=str(new_level * 100 - 100), inline=True)
             embed.set_thumbnail(url=message.author.display_avatar.url)
             embed.set_footer(text=f'Usuario: {message.author.name} | ID: {message.author.id}')
-            
+
             await level_channel.send(embed=embed)
-            
+
             # Log de subida de nivel
             await send_log(
                 guild=message.guild,
@@ -785,10 +797,10 @@ async def on_message(message):
                 ],
                 author={'name': message.author.name, 'icon_url': message.author.display_avatar.url}
             )
-            
+
             if level_channel.id != message.channel.id:
                 await message.channel.send(f'{message.author.mention} subió al nivel {new_level}!')
-        
+
         save_data()
     
     # Automoderación manual
@@ -1184,7 +1196,63 @@ async def on_raw_reaction_add(payload):
                 print(f'[Verificación] El bot necesita permisos: Manage Roles, Send Messages')
             except Exception as e:
                 print(f'Error en verificación: {e}')
-    
+
+    # Roles Reaccionables
+    server_id = str(payload.guild_id)
+    if 'servers' in data and server_id in data['servers'] and 'reaction_roles' in data['servers'][server_id]:
+        panel_message_id = data['servers'][server_id]['reaction_roles'].get('panel_message_id')
+        reaction_roles = data['servers'][server_id]['reaction_roles'].get('roles', {})
+
+        if payload.message_id == panel_message_id and str(payload.emoji) in reaction_roles:
+            try:
+                guild = bot.get_guild(payload.guild_id)
+                member = guild.get_member(payload.user_id)
+
+                if member and not member.bot:
+                    role_id = reaction_roles[str(payload.emoji)]['role_id']
+                    role = guild.get_role(role_id)
+
+                    if role:
+                        if role in member.roles:
+                            # Quitar el rol
+                            await member.remove_roles(role)
+                            print(f'[Reaction Roles] Rol {role.name} quitado de {member.name} en servidor {guild.name}')
+                        else:
+                            # Agregar el rol
+                            await member.add_roles(role)
+                            print(f'[Reaction Roles] Rol {role.name} asignado a {member.name} en servidor {guild.name}')
+            except discord.errors.Forbidden:
+                print(f'[Reaction Roles] Error de permisos en servidor {guild.name}')
+            except Exception as e:
+                print(f'[Reaction Roles] Error: {e}')
+
+# Evento de reacción removida para roles reaccionables
+@bot.event
+async def on_raw_reaction_remove(payload):
+    # Roles Reaccionables
+    server_id = str(payload.guild_id)
+    if 'servers' in data and server_id in data['servers'] and 'reaction_roles' in data['servers'][server_id]:
+        panel_message_id = data['servers'][server_id]['reaction_roles'].get('panel_message_id')
+        reaction_roles = data['servers'][server_id]['reaction_roles'].get('roles', {})
+
+        if payload.message_id == panel_message_id and str(payload.emoji) in reaction_roles:
+            try:
+                guild = bot.get_guild(payload.guild_id)
+                member = guild.get_member(payload.user_id)
+
+                if member and not member.bot:
+                    role_id = reaction_roles[str(payload.emoji)]['role_id']
+                    role = guild.get_role(role_id)
+
+                    if role and role in member.roles:
+                        # Quitar el rol
+                        await member.remove_roles(role)
+                        print(f'[Reaction Roles] Rol {role.name} quitado de {member.name} (reacción removida) en servidor {guild.name}')
+            except discord.errors.Forbidden:
+                print(f'[Reaction Roles] Error de permisos en servidor {guild.name}')
+            except Exception as e:
+                print(f'[Reaction Roles] Error: {e}')
+
     # Sorteos (verificar en todos los servidores)
     server_id = str(payload.guild_id)
     if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
@@ -2186,6 +2254,261 @@ async def config_welcome_channel(interaction: discord.Interaction, channel: disc
     save_data()
     await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}')
     print(f'[Config] Canal de bienvenida configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
+
+# Sistema de Roles por Nivel
+@bot.tree.command(name='add_level_role', description='Agrega un rol que se asigna al alcanzar un nivel específico')
+@discord.app_commands.describe(level='Nivel requerido', role='Rol a asignar')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def add_level_role(interaction: discord.Interaction, level: int, role: discord.Role):
+    server_id = str(interaction.guild.id)
+
+    # Inicializar estructura si no existe
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'level_roles' not in data['servers'][server_id]:
+        data['servers'][server_id]['level_roles'] = {}
+
+    data['servers'][server_id]['level_roles'][level] = role.id
+    save_data()
+
+    await interaction.response.send_message(f'✅ Rol {role.mention} configurado para el nivel **{level}**')
+    print(f'[Level Roles] Rol {role.name} configurado para nivel {level} en servidor {interaction.guild.name}')
+
+@bot.tree.command(name='remove_level_role', description='Elimina un rol de un nivel específico')
+@discord.app_commands.describe(level='Nivel a eliminar')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def remove_level_role(interaction: discord.Interaction, level: int):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'level_roles' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay roles por nivel configurados', ephemeral=True)
+        return
+
+    if level not in data['servers'][server_id]['level_roles']:
+        await interaction.response.send_message(f'❌ No hay rol configurado para el nivel {level}', ephemeral=True)
+        return
+
+    del data['servers'][server_id]['level_roles'][level]
+    save_data()
+
+    await interaction.response.send_message(f'✅ Rol del nivel **{level}** eliminado')
+    print(f'[Level Roles] Rol del nivel {level} eliminado en servidor {interaction.guild.name}')
+
+@bot.tree.command(name='list_level_roles', description='Lista todos los roles configurados por nivel')
+async def list_level_roles(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'level_roles' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay roles por nivel configurados', ephemeral=True)
+        return
+
+    level_roles = data['servers'][server_id]['level_roles']
+
+    if not level_roles:
+        await interaction.response.send_message('❌ No hay roles por nivel configurados', ephemeral=True)
+        return
+
+    # Ordenar por nivel
+    sorted_levels = sorted(level_roles.keys())
+
+    embed = discord.Embed(
+        title='🎭 Roles por Nivel',
+        description=f'Configuración de roles por nivel en {interaction.guild.name}',
+        color=0x9b59b6
+    )
+
+    for level in sorted_levels:
+        role_id = level_roles[level]
+        role = interaction.guild.get_role(role_id)
+        if role:
+            embed.add_field(name=f'Nivel {level}', value=role.mention, inline=False)
+
+    await interaction.response.send_message(embed=embed)
+
+# Sistema de Estadísticas del Servidor
+@bot.tree.command(name='server_stats', description='Muestra estadísticas detalladas del servidor')
+async def server_stats(interaction: discord.Interaction):
+    guild = interaction.guild
+    server_id = str(guild.id)
+
+    # Obtener datos del servidor
+    server_users = data['servers'][server_id].get('users', {}) if 'servers' in data and server_id in data['servers'] else {}
+
+    # Calcular estadísticas
+    total_members = guild.member_count
+    online_members = sum(1 for member in guild.members if member.status != discord.Status.offline)
+    total_text_channels = len(guild.text_channels)
+    total_voice_channels = len(guild.voice_channels)
+    total_roles = len(guild.roles)
+    total_categories = len(guild.categories)
+
+    # Calcular niveles promedio
+    if server_users:
+        total_levels = sum(user_data['level'] for user_data in server_users.values())
+        avg_level = total_levels / len(server_users) if server_users else 0
+    else:
+        avg_level = 0
+
+    # Obtener usuario con mayor nivel
+    if server_users:
+        top_user = max(server_users.items(), key=lambda x: x[1]['level'])
+        top_user_id, top_user_data = top_user
+        try:
+            top_user_obj = await bot.fetch_user(int(top_user_id))
+            top_user_name = top_user_obj.name
+        except:
+            top_user_name = "Usuario desconocido"
+    else:
+        top_user_name = "N/A"
+        top_user_data = {'level': 0}
+
+    # Fecha de creación del servidor
+    server_age = (datetime.now() - guild.created_at).days
+
+    embed = discord.Embed(
+        title=f'📊 Estadísticas de {guild.name}',
+        description=f'Información detallada del servidor',
+        color=0x3498db
+    )
+
+    embed.add_field(name='👥 Miembros', value=f'**{total_members}** total\n**{online_members}** en línea', inline=True)
+    embed.add_field(name='💬 Canales', value=f'**{total_text_channels}** texto\n**{total_voice_channels}** voz', inline=True)
+    embed.add_field(name='🎭 Roles', value=f'**{total_roles}** roles', inline=True)
+    embed.add_field(name='📁 Categorías', value=f'**{total_categories}** categorías', inline=True)
+    embed.add_field(name='⭐ Nivel Promedio', value=f'**{avg_level:.1f}**', inline=True)
+    embed.add_field(name='🏆 Top Nivel', value=f'**{top_user_name}** (Nivel {top_user_data["level"]})', inline=True)
+    embed.add_field(name='📅 Edad del Servidor', value=f'**{server_age}** días', inline=True)
+    embed.add_field(name='🆔 ID del Servidor', value=f'`{guild.id}`', inline=True)
+    embed.add_field(name='👑 Propietario', value=guild.owner.mention if guild.owner else 'Desconocido', inline=True)
+
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else guild.me.display_avatar.url)
+    embed.set_footer(text=f'Actualizado: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+
+    await interaction.response.send_message(embed=embed)
+
+# Sistema de Roles Reaccionables
+@bot.tree.command(name='create_role_panel', description='Crea un panel de roles reaccionables')
+@discord.app_commands.describe(channel='Canal donde crear el panel', title='Título del panel')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def create_role_panel(interaction: discord.Interaction, channel: discord.TextChannel, title: str = "🎭 Roles Reaccionables"):
+    server_id = str(interaction.guild.id)
+
+    # Inicializar estructura si no existe
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'reaction_roles' not in data['servers'][server_id]:
+        data['servers'][server_id]['reaction_roles'] = {}
+
+    embed = discord.Embed(
+        title=title,
+        description='Reacciona a los emojis para obtener los roles correspondientes. ¡Click para agregar, click de nuevo para quitar!',
+        color=0x9b59b6
+    )
+
+    embed.add_field(name='📋 Instrucciones', value='• Reacciona para obtener el rol\n• Reacciona de nuevo para quitarlo\n• Los roles se asignan automáticamente', inline=False)
+    embed.set_footer(text='Sistema de roles reaccionables')
+
+    message = await channel.send(embed=embed)
+
+    # Guardar el mensaje del panel
+    data['servers'][server_id]['reaction_roles']['panel_message_id'] = message.id
+    data['servers'][server_id]['reaction_roles']['panel_channel_id'] = channel.id
+    data['servers'][server_id]['reaction_roles']['roles'] = {}
+    save_data()
+
+    await interaction.response.send_message(f'✅ Panel de roles creado en {channel.mention}. Usa /add_reaction_role para agregar roles.')
+    print(f'[Reaction Roles] Panel creado en servidor {interaction.guild.name} (ID: {message.id})')
+
+@bot.tree.command(name='add_reaction_role', description='Agrega un rol reaccionable al panel')
+@discord.app_commands.describe(emoji='Emoji a usar', role='Rol a asignar', description='Descripción del rol')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def add_reaction_role(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str = ""):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'reaction_roles' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ Primero crea un panel con /create_role_panel', ephemeral=True)
+        return
+
+    panel_message_id = data['servers'][server_id]['reaction_roles'].get('panel_message_id')
+    panel_channel_id = data['servers'][server_id]['reaction_roles'].get('panel_channel_id')
+
+    if not panel_message_id or not panel_channel_id:
+        await interaction.response.send_message('❌ Panel no encontrado. Crea uno nuevo con /create_role_panel', ephemeral=True)
+        return
+
+    # Agregar el rol a la configuración
+    if 'roles' not in data['servers'][server_id]['reaction_roles']:
+        data['servers'][server_id]['reaction_roles']['roles'] = {}
+
+    data['servers'][server_id]['reaction_roles']['roles'][emoji] = {
+        'role_id': role.id,
+        'description': description
+    }
+    save_data()
+
+    # Actualizar el panel
+    try:
+        channel = bot.get_channel(panel_channel_id)
+        if channel:
+            message = await channel.fetch_message(panel_message_id)
+            embed = message.embeds[0] if message.embeds else None
+
+            if embed:
+                # Agregar el nuevo rol al embed
+                role_text = f"{emoji} - {role.mention}"
+                if description:
+                    role_text += f"\n*{description}*"
+                embed.add_field(name=role.name, value=role_text, inline=False)
+
+                await message.edit(embed=embed)
+
+                # Agregar la reacción al mensaje
+                try:
+                    await message.add_reaction(emoji)
+                except:
+                    pass
+
+    except Exception as e:
+        print(f'[Reaction Roles] Error al actualizar panel: {e}')
+
+    await interaction.response.send_message(f'✅ Rol {role.mention} agregado con emoji {emoji}')
+    print(f'[Reaction Roles] Rol {role.name} agregado con emoji {emoji} en servidor {interaction.guild.name}')
+
+@bot.tree.command(name='list_reaction_roles', description='Lista todos los roles reaccionables configurados')
+async def list_reaction_roles(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'reaction_roles' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay panel de roles reaccionables configurado', ephemeral=True)
+        return
+
+    reaction_roles = data['servers'][server_id]['reaction_roles'].get('roles', {})
+
+    if not reaction_roles:
+        await interaction.response.send_message('❌ No hay roles reaccionables configurados', ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title='🎭 Roles Reaccionables',
+        description=f'Configuración de roles reaccionables en {interaction.guild.name}',
+        color=0x9b59b6
+    )
+
+    for emoji, role_data in reaction_roles.items():
+        role_id = role_data['role_id']
+        description = role_data.get('description', '')
+        role = interaction.guild.get_role(role_id)
+        if role:
+            role_text = role.mention
+            if description:
+                role_text += f"\n*{description}*"
+            embed.add_field(name=emoji, value=role_text, inline=False)
+
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets')
 @discord.app_commands.describe(category='Categoría para tickets')
