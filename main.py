@@ -1816,41 +1816,41 @@ async def on_reaction_remove(reaction, user):
 #         author={'name': user.name, 'icon_url': user.display_avatar.url}
 #     )
 
-# Evento de cambio de presencia (estado/juego)
-@bot.event
-async def on_presence_update(before, after):
-    if before.bot or after.bot:
-        return
-
-    # Cambio de estado (online, idle, dnd, offline)
-    if before.status != after.status:
-        await send_log(
-            guild=after.guild if after.guild else before.guild,
-            title='🟢 Cambio de Estado',
-            description=f'{after.mention} cambió su estado a {str(after.status)}',
-            color=0x95a5a6,
-            fields=[
-                {'name': 'Usuario', 'value': after.name, 'inline': True},
-                {'name': 'Estado anterior', 'value': str(before.status), 'inline': True},
-                {'name': 'Estado nuevo', 'value': str(after.status), 'inline': True}
-            ],
-            author={'name': after.name, 'icon_url': after.display_avatar.url}
-        )
-
-    # Cambio de actividad (juego, streaming, etc.)
-    if before.activity != after.activity:
-        if after.activity:
-            await send_log(
-                guild=after.guild if after.guild else before.guild,
-                title='🎮 Cambio de Actividad',
-                description=f'{after.mention} cambió su actividad',
-                color=0x3498db,
-                fields=[
-                    {'name': 'Usuario', 'value': after.name, 'inline': True},
-                    {'name': 'Actividad', 'value': f'{after.activity.type.name}: {after.activity.name}', 'inline': True}
-                ],
-                author={'name': after.name, 'icon_url': after.display_avatar.url}
-            )
+# Evento de cambio de presencia (estado/juego) - DESACTIVADO para reducir spam en logs
+# @bot.event
+# async def on_presence_update(before, after):
+#     if before.bot or after.bot:
+#         return
+#
+#     # Cambio de estado (online, idle, dnd, offline)
+#     if before.status != after.status:
+#         await send_log(
+#             guild=after.guild if after.guild else before.guild,
+#             title='🟢 Cambio de Estado',
+#             description=f'{after.mention} cambió su estado a {str(after.status)}',
+#             color=0x95a5a6,
+#             fields=[
+#                 {'name': 'Usuario', 'value': after.name, 'inline': True},
+#                 {'name': 'Estado anterior', 'value': str(before.status), 'inline': True},
+#                 {'name': 'Estado nuevo', 'value': str(after.status), 'inline': True}
+#             ],
+#             author={'name': after.name, 'icon_url': after.display_avatar.url}
+#         )
+#
+#     # Cambio de actividad (juego, streaming, etc.)
+#     if before.activity != after.activity:
+#         if after.activity:
+#             await send_log(
+#                 guild=after.guild if after.guild else before.guild,
+#                 title='🎮 Cambio de Actividad',
+#                 description=f'{after.mention} cambió su actividad',
+#                 color=0x3498db,
+#                 fields=[
+#                     {'name': 'Usuario', 'value': after.name, 'inline': True},
+#                     {'name': 'Actividad', 'value': f'{after.activity.type.name}: {after.activity.name}', 'inline': True}
+#                 ],
+#                 author={'name': after.name, 'icon_url': after.display_avatar.url}
+#             )
 
 # Evento de cambio de perfil de usuario
 @bot.event
