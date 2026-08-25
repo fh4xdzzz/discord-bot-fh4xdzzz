@@ -1172,11 +1172,8 @@ async def on_raw_reaction_add(payload):
                         await member.send(f'✅ ¡Has sido verificado exitosamente en **{guild.name}**! Ahora tienes acceso completo al servidor.')
                         print(f'[Verificación] Mensaje privado enviado a {member.name} en servidor {guild.name}')
                     except discord.errors.Forbidden:
-                        # Si no se puede enviar DM, enviar en el canal público como fallback
-                        channel = bot.get_channel(payload.channel_id)
-                        if channel:
-                            await channel.send(f'✅ {member.mention} ha sido verificado y ahora tiene acceso completo.')
-                            print(f'[Verificación] No se pudo enviar DM a {member.name}, mensaje enviado en canal público')
+                        # Si no se puede enviar DM, no enviar nada
+                        print(f'[Verificación] No se pudo enviar DM a {member.name} (DMs desactivados)')
                     print(f'[Verificación] {member.name} verificado exitosamente en servidor {guild.name}')
                 else:
                     print(f'[Verificación] {member.name} ya está verificado en servidor {guild.name}')
@@ -2604,9 +2601,8 @@ async def manual_verify(interaction: discord.Interaction, member: discord.Member
                 await member.send(f'✅ ¡Has sido verificado manualmente en **{interaction.guild.name}**! Ahora tienes acceso completo al servidor.')
                 print(f'[Manual Verify] Mensaje privado enviado a {member.name} en servidor {interaction.guild.name}')
             except discord.errors.Forbidden:
-                # Si no se puede enviar DM, informar al admin
-                await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente (no se pudo enviar DM al usuario)', ephemeral=True)
-                return
+                # Si no se puede enviar DM, no enviar nada al usuario
+                print(f'[Manual Verify] No se pudo enviar DM a {member.name} (DMs desactivados)')
 
             await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente', ephemeral=True)
         else:
