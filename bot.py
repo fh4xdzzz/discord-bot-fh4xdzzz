@@ -20,7 +20,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.voice_states = True
-intents.presences = True
+# intents.presences = True  # Desactivado para optimizar rendimiento (no se usa)
 intents.guilds = True
 intents.moderation = True
 intents.invites = True
@@ -152,13 +152,57 @@ def validate_data():
     save_data()
     print('[Validación] Datos validados y corregidos correctamente')
 
+# Sistema de caché y guardado optimizado
+_data_needs_save = False
+_save_interval = 60  # Guardar cada 60 segundos como máximo
+
 def save_data():
+    """Guarda datos con sistema de caché para optimizar rendimiento"""
+    global _data_needs_save
+    _data_needs_save = True
+
+async def _auto_save():
+    """Tarea en background para guardar datos automáticamente"""
+    global _data_needs_save
+    while True:
+        await asyncio.sleep(_save_interval)
+        if _data_needs_save:
+            try:
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+                _data_needs_save = False
+                print('[Optimización] Datos guardados automáticamente')
+            except Exception as e:
+                print(f'[Error] Error al guardar datos: {e}')
+
+def save_data_immediate():
+    """Guarda datos inmediatamente (sin caché) para operaciones críticas"""
     try:
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e:
         print(f'[Error] Error al guardar datos: {e}')
         raise
+
+# Caché de usuarios para evitar llamadas repetitivas a la API
+_user_cache = {}
+_cache_expiry = 300  # 5 minutos
+
+def get_cached_user(user_id):
+    """Obtiene usuario del caché o lo busca"""
+    current_time = datetime.now().timestamp()
+    if user_id in _user_cache:
+        cached_data = _user_cache[user_id]
+        if current_time - cached_data['timestamp'] < _cache_expiry:
+            return cached_data['user']
+    return None
+
+def cache_user(user_id, user):
+    """Guarda usuario en caché"""
+    _user_cache[user_id] = {
+        'user': user,
+        'timestamp': datetime.now().timestamp()
+    }
 
 # Funciones helper para configuración por servidor
 def get_server_config(guild_id):
@@ -203,9 +247,35 @@ verified_users = data['config'].get('verified_users', [])
 giveaways = data.get('giveaways', {})
 stream_notifications = {}  # Para rastrear notificaciones de streams enviadas
 
-# Sistema de rate limiting para logs
+# Sistema de rate limiting mejorado
 log_rate_limit = {}  # {user_id: {last_log_time}}
 LOG_RATE_LIMIT_SECONDS = 5  # Máximo 1 log por usuario cada 5 segundos
+
+# Cooldowns para comandos frecuentes
+command_cooldowns = {}  # {user_id: {command_name: last_used_time}}
+COOLDOWN_PERIODS = {
+    'ping': 10,  # 10 segundos
+    'level': 30,  # 30 segundos
+    'top': 60,  # 1 minuto
+    'server_stats': 60,  # 1 minuto
+    'info': 30  # 30 segundos
+}
+
+def check_cooldown(user_id, command_name):
+    """Verifica si un usuario está en cooldown para un comando"""
+    current_time = datetime.now().timestamp()
+    if user_id not in command_cooldowns:
+        command_cooldowns[user_id] = {}
+
+    if command_name in command_cooldowns[user_id]:
+        last_used = command_cooldowns[user_id][command_name]
+        cooldown_period = COOLDOWN_PERIODS.get(command_name, 0)
+        if current_time - last_used < cooldown_period:
+            remaining = int(cooldown_period - (current_time - last_used))
+            return False, remaining
+
+    command_cooldowns[user_id][command_name] = current_time
+    return True, 0
 
 # Función para enviar logs
 async def send_log(guild, title, description, color=0x3498db, fields=None, author=None, thumbnail=None):
@@ -339,6 +409,10 @@ async def on_ready():
     print(f'Bot conectado: {bot.user.name}')
     print(f'ID: {bot.user.id}')
     print(f'Servidores: {len(bot.guilds)}')
+
+    # Iniciar tarea de auto-save optimizado
+    bot.loop.create_task(_auto_save())
+    print('[Optimización] Sistema de auto-save iniciado')
 
     # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
@@ -1127,7 +1201,7 @@ async def on_member_join(member):
     user_id = str(member.id)
     if user_id not in data['servers'][server_id]['users']:
         data['servers'][server_id]['users'][user_id] = {'level': 1, 'xp': 0}
-        save_data()
+        save_data()  # Guardar solo para nuevos usuarios (operación crítica)
 
 # Evento de reacción para verificación
 @bot.event
@@ -1923,6 +1997,13 @@ async def assign_auto_roles(member):
 # Comandos slash
 @bot.tree.command(name='ping', description='Comprueba la latencia del bot')
 async def ping(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    can_execute, remaining = check_cooldown(user_id, 'ping')
+
+    if not can_execute:
+        await interaction.response.send_message(f'⏱️ Debes esperar {remaining} segundos antes de usar este comando nuevamente.', ephemeral=True)
+        return
+
     try:
         await interaction.response.send_message(f'🏓 Pong! {round(bot.latency * 1000)}ms')
     except discord.errors.NotFound:
@@ -2196,16 +2277,22 @@ async def level(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
         return
-    
-    server_id = str(interaction.guild.id)
+
     user_id = str(interaction.user.id)
-    
+    can_execute, remaining = check_cooldown(user_id, 'level')
+
+    if not can_execute:
+        await interaction.response.send_message(f'⏱️ Debes esperar {remaining} segundos antes de usar este comando nuevamente.', ephemeral=True)
+        return
+
+    server_id = str(interaction.guild.id)
+
     # Obtener usuarios del servidor específico
     if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
         users = data['servers'][server_id]['users']
     else:
         users = data.get('users', {})  # Fallback a global
-    
+
     if user_id in users:
         user_data = users[user_id]
         level = user_data['level']
@@ -2372,13 +2459,19 @@ async def server_stats(interaction: discord.Interaction):
     else:
         avg_level = 0
 
-    # Obtener usuario con mayor nivel
+    # Obtener usuario con mayor nivel (usando caché)
     if server_users:
         top_user = max(server_users.items(), key=lambda x: x[1]['level'])
         top_user_id, top_user_data = top_user
         try:
-            top_user_obj = await bot.fetch_user(int(top_user_id))
-            top_user_name = top_user_obj.name
+            # Intentar obtener del caché primero
+            cached_user = get_cached_user(int(top_user_id))
+            if cached_user:
+                top_user_name = cached_user.name
+            else:
+                top_user_obj = await bot.fetch_user(int(top_user_id))
+                cache_user(int(top_user_id), top_user_obj)
+                top_user_name = top_user_obj.name
         except:
             top_user_name = "Usuario desconocido"
     else:
