@@ -84,10 +84,15 @@ def create_default_data():
                 'streams': None,
                 'announcements': None,
                 'events': None
-            }
+            },
+            'giveaway_channel': None,
+            'giveaway_admin_role': None,
+            'giveaway_participant_role': None,
+            'giveaway_announcement_channel': None
         },
 
-        'user_notifications': {}
+        'user_notifications': {},
+        'giveaways': {}
     }
 
 def validate_data():
@@ -97,6 +102,7 @@ def validate_data():
         'warns': dict,
         'tickets': dict,
         'banned_words': list,
+        'giveaways': dict,
         'config': dict,
 
         'user_notifications': dict,
@@ -118,7 +124,11 @@ def validate_data():
         'verified_users': list,
         'notifications_channel': (int, type(None)),
         'log_channel': (int, type(None)),
-        'notification_roles': dict
+        'notification_roles': dict,
+        'giveaway_channel': (int, type(None)),
+        'giveaway_admin_role': (int, type(None)),
+        'giveaway_participant_role': (int, type(None)),
+        'giveaway_announcement_channel': (int, type(None))
     }
 
     # Validar estructura principal
@@ -158,6 +168,11 @@ def validate_data():
     # Validar estructura de servidores
     if 'servers' not in data:
         data['servers'] = {}
+    
+    # Validar que cada servidor tenga la estructura de sorteos
+    for server_id, server_data in data['servers'].items():
+        if 'giveaways' not in server_data:
+            server_data['giveaways'] = {}
 
     save_data()
     logger.info('Datos validados y corregidos correctamente')
@@ -316,6 +331,390 @@ def validate_discord_id(id_value: str, field_name: str) -> int:
     except ValueError:
         raise ValueError(f"{field_name} debe ser un número entero válido")
 
+# ==================== SISTEMA DE SORTEOS ====================
+
+def get_server_setting(guild_id: int, setting_key: str, default=None):
+    """Obtiene una configuración específica del servidor"""
+    server_id = str(guild_id)
+    if 'servers' in data and server_id in data['servers']:
+        if 'config' in data['servers'][server_id]:
+            return data['servers'][server_id]['config'].get(setting_key, default)
+    return default
+
+def set_server_setting(guild_id: int, setting_key: str, value):
+    """Establece una configuración específica del servidor"""
+    server_id = str(guild_id)
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'config' not in data['servers'][server_id]:
+        data['servers'][server_id]['config'] = {}
+    data['servers'][server_id]['config'][setting_key] = value
+    save_data()
+
+# Vista para el botón de participación en sorteos
+class GiveawayJoinView(discord.ui.View):
+    def __init__(self, giveaway_id: str):
+        super().__init__(timeout=None)
+        self.giveaway_id = giveaway_id
+    
+    @discord.ui.button(label='🎉 Participar', style=discord.ButtonStyle.primary, custom_id='giveaway_join')
+    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        server_id = str(interaction.guild.id)
+        
+        # Verificar que el sorteo exista y esté activo
+        if 'servers' not in data or server_id not in data['servers']:
+            await interaction.response.send_message('❌ Error: Servidor no encontrado', ephemeral=True)
+            return
+        
+        if 'giveaways' not in data['servers'][server_id]:
+            await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+            return
+        
+        if self.giveaway_id not in data['servers'][server_id]['giveaways']:
+            await interaction.response.send_message('❌ Este sorteo no existe', ephemeral=True)
+            return
+        
+        giveaway = data['servers'][server_id]['giveaways'][self.giveaway_id]
+        
+        # Verificar que el sorteo esté activo
+        if giveaway.get('status') != 'active':
+            await interaction.response.send_message('❌ Este sorteo ya finalizó', ephemeral=True)
+            return
+        
+        # Verificar requisitos de participación
+        user_id = str(interaction.user.id)
+        
+        # Verificar rol de participante si está configurado
+        participant_role_id = get_server_setting(interaction.guild.id, 'giveaway_participant_role')
+        if participant_role_id:
+            participant_role = interaction.guild.get_role(participant_role_id)
+            if participant_role and participant_role not in interaction.user.roles:
+                await interaction.response.send_message('❌ No tienes el rol requerido para participar', ephemeral=True)
+                return
+        
+        # Verificar que no sea un bot
+        if interaction.user.bot:
+            await interaction.response.send_message('❌ Los bots no pueden participar', ephemeral=True)
+            return
+        
+        # Verificar si ya participa
+        if user_id in giveaway['participants']:
+            await interaction.response.send_message('✅ Ya estás participando en este sorteo', ephemeral=True)
+            return
+        
+        # Agregar participante
+        giveaway['participants'].append(user_id)
+        data['servers'][server_id]['giveaways'][self.giveaway_id] = giveaway
+        
+        # Actualizar contador inmediatamente
+        try:
+            channel = bot.get_channel(giveaway['channel_id'])
+            if channel:
+                message = await channel.fetch_message(int(giveaway['message_id']))
+                embed = message.embeds[0]
+                
+                # Actualizar campo de participantes
+                for i, field in enumerate(embed.fields):
+                    if field.name == '👥 Participantes':
+                        embed.set_field_at(i, name='👥 Participantes', value=f"**{len(giveaway['participants'])}**", inline=True)
+                        break
+                
+                await message.edit(embed=embed)
+                logger.info(f'{interaction.user.name} se unió al sorteo {giveaway["prize"]}')
+        except Exception as e:
+            logger.error(f'Error al actualizar contador: {e}')
+        
+        save_data()
+        await interaction.response.send_message('✅ ¡Te has unido al sorteo!', ephemeral=True)
+
+# Vista para mostrar opciones de administración de sorteos
+class GiveawayAdminView(discord.ui.View):
+    def __init__(self, giveaway_id: str):
+        super().__init__(timeout=None)
+        self.giveaway_id = giveaway_id
+    
+    @discord.ui.button(label='🏁 Finalizar', style=discord.ButtonStyle.danger, custom_id='giveaway_end')
+    async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        server_id = str(interaction.guild.id)
+        
+        # Verificar permisos
+        admin_role_id = get_server_setting(interaction.guild.id, 'giveaway_admin_role')
+        has_permission = interaction.user.guild_permissions.administrator
+        
+        if admin_role_id:
+            admin_role = interaction.guild.get_role(admin_role_id)
+            if admin_role and admin_role in interaction.user.roles:
+                has_permission = True
+        
+        if not has_permission:
+            await interaction.response.send_message('❌ No tienes permisos para administrar sorteos', ephemeral=True)
+            return
+        
+        # Finalizar sorteo
+        if self.giveaway_id in data['servers'][server_id]['giveaways']:
+            giveaway = data['servers'][server_id]['giveaways'][self.giveaway_id]
+            giveaway['status'] = 'ended'
+            data['servers'][server_id]['giveaways'][self.giveaway_id] = giveaway
+            save_data()
+            
+            # Ejecutar finalización
+            bot.loop.create_task(end_giveaway(self.giveaway_id, server_id))
+            await interaction.response.send_message('✅ Sorteo finalizado manualmente', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
+    
+    @discord.ui.button(label='🎲 Reroll', style=discord.ButtonStyle.secondary, custom_id='giveaway_reroll')
+    async def reroll_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        server_id = str(interaction.guild.id)
+        
+        # Verificar permisos
+        admin_role_id = get_server_setting(interaction.guild.id, 'giveaway_admin_role')
+        has_permission = interaction.user.guild_permissions.administrator
+        
+        if admin_role_id:
+            admin_role = interaction.guild.get_role(admin_role_id)
+            if admin_role and admin_role in interaction.user.roles:
+                has_permission = True
+        
+        if not has_permission:
+            await interaction.response.send_message('❌ No tienes permisos para administrar sorteos', ephemeral=True)
+            return
+        
+        # Ejecutar reroll
+        if self.giveaway_id in data['servers'][server_id]['giveaways']:
+            giveaway = data['servers'][server_id]['giveaways'][self.giveaway_id]
+            
+            if giveaway.get('status') != 'ended':
+                await interaction.response.send_message('❌ Solo puedes hacer reroll de sorteos finalizados', ephemeral=True)
+                return
+            
+            if not giveaway['participants']:
+                await interaction.response.send_message('❌ No hay participantes para reroll', ephemeral=True)
+                return
+            
+            # Seleccionar nuevo ganador excluyendo los anteriores
+            import random
+            previous_winners = set(giveaway.get('winners', []))
+            available_participants = [p for p in giveaway['participants'] if p not in previous_winners]
+            
+            if not available_participants:
+                await interaction.response.send_message('❌ No hay más participantes disponibles para reroll', ephemeral=True)
+                return
+            
+            new_winner_id = random.choice(available_participants)
+            
+            try:
+                winner = await bot.fetch_user(int(new_winner_id))
+                
+                # Actualizar mensaje del sorteo
+                channel = bot.get_channel(giveaway['channel_id'])
+                if channel:
+                    message = await channel.fetch_message(int(giveaway['message_id']))
+                    embed = message.embeds[0]
+                    
+                    # Agregar nuevo ganador
+                    new_winners = giveaway.get('winners', []) + [new_winner_id]
+                    winner_mentions = []
+                    for wid in new_winners:
+                        try:
+                            wuser = await bot.fetch_user(int(wid))
+                            winner_mentions.append(wuser.mention)
+                        except:
+                            pass
+                    
+                    # Actualizar campo de ganadores
+                    for i, field in enumerate(embed.fields):
+                        if 'Ganador' in field.name:
+                            embed.set_field_at(i, name=f'🏆 Ganador{"es" if len(winner_mentions) > 1 else ""} ({len(winner_mentions)})', 
+                                          value=', '.join(winner_mentions), inline=False)
+                            break
+                    
+                    await message.edit(embed=embed)
+                
+                # Anunciar nuevo ganador
+                await channel.send(f'🎲 **Nuevo ganador del sorteo:** {winner.mention}')
+                
+                # Actualizar datos
+                giveaway['winners'] = new_winners
+                data['servers'][server_id]['giveaways'][self.giveaway_id] = giveaway
+                save_data()
+                
+                await interaction.response.send_message(f'✅ Nuevo ganador seleccionado: {winner.mention}', ephemeral=True)
+                logger.info(f'Reroll realizado para sorteo {giveaway["prize"]}. Nuevo ganador: {winner.name}')
+            except Exception as e:
+                logger.error(f'Error al realizar reroll: {e}')
+                await interaction.response.send_message(f'❌ Error al realizar reroll: {e}', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
+
+async def end_giveaway(giveaway_id: str, server_id: str = None):
+    """Finaliza un sorteo y selecciona ganadores"""
+    giveaway = None
+    
+    # Buscar el sorteo
+    if server_id and 'servers' in data and server_id in data['servers']:
+        if 'giveaways' in data['servers'][server_id] and giveaway_id in data['servers'][server_id]['giveaways']:
+            giveaway = data['servers'][server_id]['giveaways'][giveaway_id]
+    
+    if not giveaway:
+        logger.warning(f'Sorteo {giveaway_id} no encontrado')
+        return
+    
+    try:
+        channel = bot.get_channel(giveaway['channel_id'])
+        if not channel:
+            logger.warning(f'Canal {giveaway["channel_id"]} no encontrado para sorteo {giveaway_id}')
+            if server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+                save_data()
+            return
+        
+        try:
+            message = await channel.fetch_message(int(giveaway['message_id']))
+        except discord.NotFound:
+            logger.warning(f'Mensaje {giveaway["message_id"]} no encontrado para sorteo {giveaway_id}')
+            if server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+                save_data()
+            return
+        
+        # Actualizar estado
+        giveaway['status'] = 'ended'
+        
+        if not giveaway['participants']:
+            # No hubo participantes
+            embed = message.embeds[0]
+            embed.description = f'**Premio:** {giveaway["prize"]}\n\n**❌ SORTEO FINALIZADO - No hubo participantes**'
+            embed.color = 0xE74C3C
+            embed.set_field_at(1, name='⏰ Termina', value='Finalizado', inline=True)
+            embed.set_field_at(2, name='👥 Participantes', value='**0**', inline=True)
+            await message.edit(embed=embed, view=None)
+            
+            if server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+            save_data()
+            logger.info(f'Sorteo {giveaway["prize"]} finalizado sin participantes')
+            return
+        
+        # Seleccionar ganadores
+        import random
+        winners_count = min(giveaway['winners'], len(giveaway['participants']))
+        winner_ids = random.sample(giveaway['participants'], winners_count)
+        giveaway['winners'] = winner_ids
+        
+        # Actualizar embed
+        embed = message.embeds[0]
+        embed.description = f'**Premio:** {giveaway["prize"]}\n\n**🎉 ¡SORTEO FINALIZADO!**'
+        embed.color = 0x2ecc71
+        embed.set_field_at(1, name='⏰ Termina', value='Finalizado', inline=True)
+        embed.set_field_at(2, name='👥 Participantes', value=f"**{len(giveaway['participants'])}**", inline=True)
+        
+        # Obtener menciones de ganadores
+        winner_mentions = []
+        for winner_id in winner_ids:
+            try:
+                winner = await bot.fetch_user(int(winner_id))
+                winner_mentions.append(winner.mention)
+            except:
+                pass
+        
+        if winner_mentions:
+            embed.add_field(name=f'🏆 Ganador{"es" if len(winner_mentions) > 1 else ""} ({len(winner_mentions)})', 
+                          value=', '.join(winner_mentions), inline=False)
+        
+        await message.edit(embed=embed, view=GiveawayAdminView(giveaway_id))
+        
+        # Anunciar ganadores
+        if winner_mentions:
+            await channel.send(f'🎉 ¡Felicidades {", ".join(winner_mentions)} ganaron el sorteo de **{giveaway["prize"]}**!')
+        
+        # Enviar DMs a ganadores
+        for winner_id in winner_ids:
+            try:
+                winner = await bot.fetch_user(int(winner_id))
+                dm_embed = discord.Embed(
+                    title='🎉 ¡Felicidades! ¡Has ganado un sorteo!',
+                    description=f'Has ganado el sorteo de **{giveaway["prize"]}**!\n\nPor favor contacta al administrador para reclamar tu premio.',
+                    color=0xFFD700
+                )
+                dm_embed.add_field(name='🎁 Premio', value=giveaway['prize'], inline=True)
+                dm_embed.add_field(name='📁 Servidor', value=channel.guild.name, inline=True)
+                dm_embed.set_footer(text='¡Felicidades por tu premio!')
+                dm_embed.set_thumbnail(url=bot.user.display_avatar.url)
+                
+                await winner.send(embed=dm_embed)
+                logger.info(f'DM enviado a {winner.name} por ganar sorteo')
+            except Exception as e:
+                logger.warning(f'No se pudo enviar DM a {winner_id}: {e}')
+        
+        # Enviar anuncio si está configurado
+        announcement_channel_id = get_server_setting(channel.guild.id, 'giveaway_announcement_channel')
+        if announcement_channel_id:
+            try:
+                announcement_channel = bot.get_channel(announcement_channel_id)
+                if announcement_channel:
+                    await announcement_channel.send(f'🎉 ¡Ganadores del sorteo **{giveaway["prize"]}**: {", ".join(winner_mentions)}!')
+            except Exception as e:
+                logger.error(f'Error al enviar anuncio: {e}')
+        
+        # Log de finalización
+        await send_log(
+            guild=channel.guild,
+            title='🎉 Sorteo Finalizado',
+            description=f'El sorteo de **{giveaway["prize"]}** ha finalizado',
+            color=0xFFD700,
+            fields=[
+                {'name': '🎁 Premio', 'value': giveaway['prize'], 'inline': True},
+                {'name': '👥 Participantes', 'value': str(len(giveaway['participants'])), 'inline': True},
+                {'name': '🏆 Ganadores', 'value': str(len(winner_ids)), 'inline': True}
+            ]
+        )
+        
+        if server_id:
+            data['servers'][server_id]['giveaways'][giveaway_id] = giveaway
+        save_data()
+        
+        logger.info(f'Sorteo {giveaway["prize"]} finalizado. Ganadores: {len(winner_ids)}')
+        
+    except Exception as e:
+        logger.error(f'Error al finalizar sorteo {giveaway_id}: {e}')
+
+async def check_giveaway_expiry():
+    """Tarea en background para verificar sorteos expirados"""
+    while True:
+        try:
+            await asyncio.sleep(60)  # Verificar cada minuto
+            
+            if 'servers' not in data:
+                continue
+            
+            current_time = datetime.now()
+            giveaways_to_end = []
+            
+            for server_id, server_data in data['servers'].items():
+                if 'giveaways' not in server_data:
+                    continue
+                
+                for giveaway_id, giveaway in server_data['giveaways'].items():
+                    if giveaway.get('status') != 'active':
+                        continue
+                    
+                    try:
+                        end_time = datetime.fromisoformat(giveaway['end_time'])
+                        if current_time >= end_time:
+                            giveaways_to_end.append((giveaway_id, server_id))
+                    except Exception as e:
+                        logger.error(f'Error al verificar fecha de sorteo {giveaway_id}: {e}')
+            
+            # Finalizar sorteos expirados
+            for giveaway_id, server_id in giveaways_to_end:
+                await end_giveaway(giveaway_id, server_id)
+                
+        except Exception as e:
+            logger.error(f'Error en verificación de expiración de sorteos: {e}')
+
 # Sistema de rate limiting mejorado
 log_rate_limit = {}  # {user_id: {last_log_time}}
 LOG_RATE_LIMIT_SECONDS = 5  # Máximo 1 log por usuario cada 5 segundos
@@ -459,6 +858,10 @@ async def on_ready():
     # Iniciar tarea de auto-save optimizado
     bot.loop.create_task(_auto_save())
     logger.info('Sistema de auto-save iniciado')
+
+    # Iniciar tarea de verificación de sorteos
+    bot.loop.create_task(check_giveaway_expiry())
+    logger.info('Sistema de verificación de sorteos iniciado')
 
     # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
@@ -1807,6 +2210,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
+            embed.add_field(name='🎉 Sorteos', value='/giveaway create, /giveaway end, /giveaway reroll, /giveaway list, /giveaway config', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='🎫 Tickets', value='/close, /config_tickets, /send_ticket_panel, /delete_ticket_button', inline=False)
@@ -1825,6 +2229,8 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel - Crea un panel de roles\n/add_reaction_role - Agrega un rol reaccionable\n/remove_reaction_role - Elimina un rol reaccionable', inline=False)
         elif category == 'verificacion':
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/create_verification_message - Configura rol/canal y crea el mensaje\n/manual_verify - Verifica manualmente a un usuario', inline=False)
+        elif category == 'sorteos':
+            embed.add_field(name='🎉 Sorteos', value='/giveaway create - Crea un nuevo sorteo\n/giveaway end - Finaliza un sorteo manualmente\n/giveaway reroll - Selecciona nuevo ganador\n/giveaway list - Muestra sorteos activos\n/giveaway config - Configura el sistema de sorteos', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -1872,6 +2278,11 @@ class HelpView(discord.ui.View):
         embed = self.create_embed('verificacion')
         await interaction.response.edit_message(embed=embed, view=self)
     
+    @discord.ui.button(label='🎉 Sorteos', style=discord.ButtonStyle.primary)
+    async def sorteos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('sorteos')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
     @discord.ui.button(label='🔔 Notificaciones', style=discord.ButtonStyle.primary)
     async def notificaciones_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = self.create_embed('notificaciones')
@@ -1912,6 +2323,360 @@ async def ayuda(interaction: discord.Interaction):
     view = HelpView()
     embed = view.create_embed('main')
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+# ==================== COMANDOS DE SORTEOS ====================
+
+@bot.tree.command(name='giveaway', description='Comandos de sorteos')
+async def giveaway(interaction: discord.Interaction):
+    """Comando principal de sorteos - muestra ayuda"""
+    embed = discord.Embed(
+        title='🎉 Sistema de Sorteos',
+        description='Usa los subcomandos para gestionar sorteos:',
+        color=0xFFD700
+    )
+    embed.add_field(name='📝 Crear', value='/giveaway create - Crea un nuevo sorteo', inline=False)
+    embed.add_field(name='🏁 Finalizar', value='/giveaway end - Finaliza un sorteo manualmente', inline=False)
+    embed.add_field(name='🎲 Reroll', value='/giveaway reroll - Selecciona nuevo ganador', inline=False)
+    embed.add_field(name='📋 Listar', value='/giveaway list - Muestra sorteos activos', inline=False)
+    embed.add_field(name='⚙️ Configurar', value='/giveaway config - Configura el sistema', inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name='giveaway_create', description='Crea un nuevo sorteo')
+@discord.app_commands.describe(
+    prize='Premio del sorteo',
+    duration='Duración en minutos',
+    winners='Cantidad de ganadores',
+    channel='Canal donde publicar (opcional)',
+    description='Descripción opcional del sorteo'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def giveaway_create(interaction: discord.Interaction, prize: str, duration: int, winners: int = 1, 
+                          channel: discord.TextChannel = None, description: str = None):
+    server_id = str(interaction.guild.id)
+    
+    # Validar inputs
+    try:
+        prize = validate_string_length(prize, 200, "Premio")
+        if not prize.strip():
+            await interaction.response.send_message('❌ El premio no puede estar vacío', ephemeral=True)
+            return
+        
+        if duration <= 0 or duration > 43200:  # Máximo 30 días
+            await interaction.response.send_message('❌ La duración debe ser entre 1 y 43200 minutos', ephemeral=True)
+            return
+        
+        if winners <= 0 or winners > 50:
+            await interaction.response.send_message('❌ Los ganadores deben ser entre 1 y 50', ephemeral=True)
+            return
+        
+        if description:
+            description = validate_string_length(description, 500, "Descripción")
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
+        return
+    
+    # Determinar canal
+    if not channel:
+        giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel')
+        if giveaway_channel_id:
+            channel = bot.get_channel(giveaway_channel_id)
+        else:
+            channel = interaction.channel
+    
+    if not channel:
+        await interaction.response.send_message('❌ No se pudo determinar el canal para el sorteo', ephemeral=True)
+        return
+    
+    # Verificar permisos en el canal
+    bot_permissions = channel.permissions_for(interaction.guild.me)
+    if not bot_permissions.send_messages or not bot_permissions.embed_links:
+        await interaction.response.send_message('❌ El bot no tiene permisos suficientes en ese canal', ephemeral=True)
+        return
+    
+    await interaction.response.defer()
+    
+    try:
+        # Inicializar estructura de sorteos del servidor
+        if 'servers' not in data:
+            data['servers'] = {}
+        if server_id not in data['servers']:
+            data['servers'][server_id] = {}
+        if 'giveaways' not in data['servers'][server_id]:
+            data['servers'][server_id]['giveaways'] = {}
+        
+        # Calcular fecha de finalización
+        end_time = datetime.now() + timedelta(minutes=duration)
+        
+        # Crear embed del sorteo
+        embed = discord.Embed(
+            title='🎉 ¡SORTEO!',
+            description=f'**Premio:** {prize}\n\n' + (f'{description}\n\n' if description else '') + '🎉 ¡Participa para ganar!',
+            color=0xFFD700
+        )
+        
+        embed.add_field(name='🏆 Ganadores', value=str(winners), inline=True)
+        embed.add_field(name='⏰ Termina', value=f'<t:{int(end_time.timestamp())}:R>', inline=True)
+        embed.add_field(name='👥 Participantes', value='**0**', inline=True)
+        embed.set_footer(text=f'Organizado por {interaction.user.name}')
+        embed.set_thumbnail(url=bot.user.display_avatar.url)
+        
+        # Enviar mensaje del sorteo
+        message = await channel.send(embed=embed, view=GiveawayJoinView('temp'))
+        
+        # Guardar sorteo
+        giveaway_id = str(message.id)
+        data['servers'][server_id]['giveaways'][giveaway_id] = {
+            'prize': prize,
+            'description': description,
+            'end_time': end_time.isoformat(),
+            'winners': winners,
+            'participants': [],
+            'organizer': str(interaction.user.id),
+            'channel_id': channel.id,
+            'message_id': str(message.id),
+            'status': 'active',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Actualizar vista con el ID correcto
+        updated_view = GiveawayJoinView(giveaway_id)
+        await message.edit(view=updated_view)
+        
+        save_data()
+        
+        await interaction.followup.send(f'✅ Sorteo creado en {channel.mention}. Terminará <t:{int(end_time.timestamp())}:R>')
+        logger.info(f'Sorteo creado: {prize} en servidor {interaction.guild.name} por {interaction.user.name}')
+        
+    except Exception as e:
+        logger.error(f'Error al crear sorteo: {e}')
+        await interaction.followup.send(f'❌ Error al crear sorteo: {e}', ephemeral=True)
+
+@bot.tree.command(name='giveaway_end', description='Finaliza manualmente un sorteo')
+@discord.app_commands.describe(message_id='ID del mensaje del sorteo')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def giveaway_end(interaction: discord.Interaction, message_id: str):
+    server_id = str(interaction.guild.id)
+    
+    try:
+        message_id_int = int(message_id)
+    except ValueError:
+        await interaction.response.send_message('❌ ID de mensaje inválido', ephemeral=True)
+        return
+    
+    # Verificar que el sorteo exista
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Servidor no encontrado', ephemeral=True)
+        return
+    
+    if 'giveaways' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+        return
+    
+    if str(message_id_int) not in data['servers'][server_id]['giveaways']:
+        await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
+        return
+    
+    giveaway = data['servers'][server_id]['giveaways'][str(message_id_int)]
+    
+    if giveaway.get('status') == 'ended':
+        await interaction.response.send_message('❌ Este sorteo ya está finalizado', ephemeral=True)
+        return
+    
+    # Finalizar sorteo
+    await end_giveaway(str(message_id_int), server_id)
+    await interaction.response.send_message('✅ Sorteo finalizado manualmente')
+    logger.info(f'Sorteo {giveaway["prize"]} finalizado manualmente por {interaction.user.name}')
+
+@bot.tree.command(name='giveaway_reroll', description='Selecciona un nuevo ganador de un sorteo finalizado')
+@discord.app_commands.describe(message_id='ID del mensaje del sorteo')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def giveaway_reroll(interaction: discord.Interaction, message_id: str):
+    server_id = str(interaction.guild.id)
+    
+    try:
+        message_id_int = int(message_id)
+    except ValueError:
+        await interaction.response.send_message('❌ ID de mensaje inválido', ephemeral=True)
+        return
+    
+    # Verificar que el sorteo exista
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Servidor no encontrado', ephemeral=True)
+        return
+    
+    if 'giveaways' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay sorteos', ephemeral=True)
+        return
+    
+    if str(message_id_int) not in data['servers'][server_id]['giveaways']:
+        await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
+        return
+    
+    giveaway = data['servers'][server_id]['giveaways'][str(message_id_int)]
+    
+    if giveaway.get('status') != 'ended':
+        await interaction.response.send_message('❌ Solo puedes hacer reroll de sorteos finalizados', ephemeral=True)
+        return
+    
+    if not giveaway['participants']:
+        await interaction.response.send_message('❌ No hay participantes para reroll', ephemeral=True)
+        return
+    
+    # Seleccionar nuevo ganador excluyendo los anteriores
+    import random
+    previous_winners = set(giveaway.get('winners', []))
+    available_participants = [p for p in giveaway['participants'] if p not in previous_winners]
+    
+    if not available_participants:
+        await interaction.response.send_message('❌ No hay más participantes disponibles para reroll', ephemeral=True)
+        return
+    
+    new_winner_id = random.choice(available_participants)
+    
+    try:
+        winner = await bot.fetch_user(int(new_winner_id))
+        
+        # Actualizar mensaje del sorteo
+        channel = bot.get_channel(giveaway['channel_id'])
+        if channel:
+            message = await channel.fetch_message(int(giveaway['message_id']))
+            embed = message.embeds[0]
+            
+            # Agregar nuevo ganador
+            new_winners = giveaway.get('winners', []) + [new_winner_id]
+            winner_mentions = []
+            for wid in new_winners:
+                try:
+                    wuser = await bot.fetch_user(int(wid))
+                    winner_mentions.append(wuser.mention)
+                except:
+                    pass
+            
+            # Actualizar campo de ganadores
+            for i, field in enumerate(embed.fields):
+                if 'Ganador' in field.name:
+                    embed.set_field_at(i, name=f'🏆 Ganador{"es" if len(winner_mentions) > 1 else ""} ({len(winner_mentions)})', 
+                                  value=', '.join(winner_mentions), inline=False)
+                    break
+            
+            await message.edit(embed=embed)
+        
+        # Anunciar nuevo ganador
+        await channel.send(f'🎲 **Nuevo ganador del sorteo:** {winner.mention}')
+        
+        # Actualizar datos
+        giveaway['winners'] = new_winners
+        data['servers'][server_id]['giveaways'][str(message_id_int)] = giveaway
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Nuevo ganador seleccionado: {winner.mention}')
+        logger.info(f'Reroll realizado para sorteo {giveaway["prize"]}. Nuevo ganador: {winner.name}')
+    except Exception as e:
+        logger.error(f'Error al realizar reroll: {e}')
+        await interaction.response.send_message(f'❌ Error al realizar reroll: {e}', ephemeral=True)
+
+@bot.tree.command(name='giveaway_list', description='Muestra los sorteos activos')
+async def giveaway_list(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+    
+    if 'servers' not in data or server_id not in data['servers'] or 'giveaways' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+        return
+    
+    server_giveaways = data['servers'][server_id]['giveaways']
+    
+    if not server_giveaways:
+        await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title='🎉 Sorteos Activos',
+        color=0xFFD700
+    )
+    
+    for giveaway_id, giveaway in server_giveaways.items():
+        if giveaway.get('status') != 'active':
+            continue
+        
+        try:
+            end_time = datetime.fromisoformat(giveaway['end_time'])
+            time_left = end_time - datetime.now()
+            
+            time_str = ""
+            if time_left.total_seconds() > 3600:
+                hours = int(time_left.total_seconds() // 3600)
+                time_str = f"{hours}h"
+            elif time_left.total_seconds() > 60:
+                minutes = int(time_left.total_seconds() // 60)
+                time_str = f"{minutes}m"
+            else:
+                time_str = "Menos de 1m"
+            
+            embed.add_field(
+                name=f'🎁 {giveaway["prize"]}',
+                value=f'👥 {len(giveaway["participants"])} participantes | ⏰ {time_str}',
+                inline=False
+            )
+        except Exception as e:
+            logger.error(f'Error al procesar sorteo {giveaway_id}: {e}')
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name='giveaway_config', description='Configura el sistema de sorteos')
+@discord.app_commands.describe(
+    channel='Canal para sorteos (opcional)',
+    admin_role='Rol que puede administrar sorteos (opcional)',
+    participant_role='Rol que puede participar (opcional)',
+    announcement_channel='Canal para anuncios de ganadores (opcional)'
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def giveaway_config(interaction: discord.Interaction, channel: discord.TextChannel = None,
+                         admin_role: discord.Role = None, participant_role: discord.Role = None,
+                         announcement_channel: discord.TextChannel = None):
+    server_id = str(interaction.guild.id)
+    
+    # Actualizar configuración
+    if channel:
+        set_server_setting(interaction.guild.id, 'giveaway_channel', channel.id)
+    
+    if admin_role:
+        set_server_setting(interaction.guild.id, 'giveaway_admin_role', admin_role.id)
+    
+    if participant_role:
+        set_server_setting(interaction.guild.id, 'giveaway_participant_role', participant_role.id)
+    
+    if announcement_channel:
+        set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', announcement_channel.id)
+    
+    # Mostrar configuración actual
+    embed = discord.Embed(
+        title='⚙️ Configuración de Sorteos',
+        description='Configuración actual del sistema de sorteos',
+        color=0x3498db
+    )
+    
+    giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel')
+    if giveaway_channel_id:
+        ch = bot.get_channel(giveaway_channel_id)
+        embed.add_field(name='📁 Canal de Sorteos', value=ch.mention if ch else 'No configurado', inline=False)
+    
+    admin_role_id = get_server_setting(interaction.guild.id, 'giveaway_admin_role')
+    if admin_role_id:
+        role = interaction.guild.get_role(admin_role_id)
+        embed.add_field(name='👑 Rol de Administradores', value=role.mention if role else 'No configurado', inline=False)
+    
+    participant_role_id = get_server_setting(interaction.guild.id, 'giveaway_participant_role')
+    if participant_role_id:
+        role = interaction.guild.get_role(participant_role_id)
+        embed.add_field(name='👤 Rol de Participantes', value=role.mention if role else 'No configurado', inline=False)
+    
+    announcement_channel_id = get_server_setting(interaction.guild.id, 'giveaway_announcement_channel')
+    if announcement_channel_id:
+        ch = bot.get_channel(announcement_channel_id)
+        embed.add_field(name='📢 Canal de Anuncios', value=ch.mention if ch else 'No configurado', inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    logger.info(f'Configuración de sorteos actualizada por {interaction.user.name} en servidor {interaction.guild.name}')
 
 @bot.tree.command(name='info', description='Muestra información del servidor')
 async def info(interaction: discord.Interaction):
