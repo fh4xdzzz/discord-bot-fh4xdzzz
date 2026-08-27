@@ -2764,8 +2764,8 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
-            embed.add_field(name='🎉 Sorteos', value='/giveaway create, /giveaway end, /giveaway reroll, /giveaway list, /giveaway config', inline=False)
-            embed.add_field(name='🎫 Tickets', value='/ticket panel, /ticket config, /ticket category, /ticket add, /ticket remove, /ticket rename, /ticket info, /ticket close, /ticket claim', inline=False)
+            embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_panel, /ticket_config, /ticket_category, /ticket_add, /ticket_remove, /ticket_rename, /ticket_info, /ticket_close, /ticket_claim', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
@@ -2784,9 +2784,9 @@ class HelpView(discord.ui.View):
         elif category == 'verificacion':
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/create_verification_message - Configura rol/canal y crea el mensaje\n/manual_verify - Verifica manualmente a un usuario', inline=False)
         elif category == 'sorteos':
-            embed.add_field(name='🎉 Sorteos', value='/giveaway create - Crea un nuevo sorteo\n/giveaway end - Finaliza un sorteo manualmente\n/giveaway reroll - Selecciona nuevo ganador\n/giveaway list - Muestra sorteos activos\n/giveaway config - Configura el sistema de sorteos', inline=False)
+            embed.add_field(name='🎉 Sorteos', value='/giveaway_create - Crea un nuevo sorteo\n/giveaway_end - Finaliza un sorteo manualmente\n/giveaway_reroll - Selecciona nuevo ganador\n/giveaway_list - Muestra sorteos activos\n/giveaway_config - Configura el sistema de sorteos', inline=False)
         elif category == 'tickets':
-            embed.add_field(name='🎫 Tickets', value='/ticket panel - Envía el panel de tickets\n/ticket config - Configura el sistema de tickets\n/ticket category - Gestiona categorías de tickets\n/ticket add - Agrega usuario a ticket\n/ticket remove - Elimina usuario de ticket\n/ticket rename - Renombra un ticket\n/ticket info - Muestra información del ticket\n/ticket close - Cierra el ticket actual\n/ticket claim - Reclama el ticket actual', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_panel - Envía el panel de tickets\n/ticket_config - Configura el sistema de tickets\n/ticket_category - Gestiona categorías de tickets\n/ticket_add - Agrega usuario a ticket\n/ticket_remove - Elimina usuario de ticket\n/ticket_rename - Renombra un ticket\n/ticket_info - Muestra información del ticket\n/ticket_close - Cierra el ticket actual\n/ticket_claim - Reclama el ticket actual', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -2889,15 +2889,15 @@ async def ticket(interaction: discord.Interaction):
         description='Usa los subcomandos para gestionar tickets:',
         color=0x3498db
     )
-    embed.add_field(name='📋 Panel', value='/ticket panel - Envía el panel de tickets', inline=False)
-    embed.add_field(name='⚙️ Config', value='/ticket config - Configura el sistema de tickets', inline=False)
-    embed.add_field(name='📂 Categorías', value='/ticket category - Gestiona categorías de tickets', inline=False)
-    embed.add_field(name='➕ Agregar', value='/ticket add - Agrega usuario a ticket', inline=False)
-    embed.add_field(name='➖ Eliminar', value='/ticket remove - Elimina usuario de ticket', inline=False)
-    embed.add_field(name='✏️ Renombrar', value='/ticket rename - Renombra un ticket', inline=False)
-    embed.add_field(name='ℹ️ Info', value='/ticket info - Muestra información del ticket', inline=False)
-    embed.add_field(name='🔒 Cerrar', value='/ticket close - Cierra el ticket actual', inline=False)
-    embed.add_field(name='👤 Reclamar', value='/ticket claim - Reclama el ticket actual', inline=False)
+    embed.add_field(name='📋 Panel', value='/ticket_panel - Envía el panel de tickets', inline=False)
+    embed.add_field(name='⚙️ Config', value='/ticket_config - Configura el sistema de tickets', inline=False)
+    embed.add_field(name='📂 Categorías', value='/ticket_category - Gestiona categorías de tickets', inline=False)
+    embed.add_field(name='➕ Agregar', value='/ticket_add - Agrega usuario a ticket', inline=False)
+    embed.add_field(name='➖ Eliminar', value='/ticket_remove - Elimina usuario de ticket', inline=False)
+    embed.add_field(name='✏️ Renombrar', value='/ticket_rename - Renombra un ticket', inline=False)
+    embed.add_field(name='ℹ️ Info', value='/ticket_info - Muestra información del ticket', inline=False)
+    embed.add_field(name='🔒 Cerrar', value='/ticket_close - Cierra el ticket actual', inline=False)
+    embed.add_field(name='👤 Reclamar', value='/ticket_claim - Reclama el ticket actual', inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name='ticket_panel', description='Envía el panel de tickets al canal actual')
