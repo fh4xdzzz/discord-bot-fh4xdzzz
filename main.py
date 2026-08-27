@@ -1987,7 +1987,7 @@ async def ayuda(interaction: discord.Interaction):
     embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
     embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
     embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
-    embed.add_field(name='🎫 Tickets', value='/ticket, /close, /config_ticket_category, /create_ticket_panel, /add_ticket_button, /delete_ticket_button', inline=False)
+    embed.add_field(name='🎫 Tickets', value='/ticket, /close, /config_ticket_category, /send_ticket_panel, /delete_ticket_button', inline=False)
     embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
     embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
     embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
@@ -2520,7 +2520,7 @@ async def send_ticket_panel(interaction: discord.Interaction):
     panel_channel_id = get_server_setting(interaction.guild.id, 'ticket_panel_channel')
     
     if not panel_channel_id:
-        await interaction.response.send_message('❌ Primero configura el canal del panel usando /config_tickets', ephemeral=True)
+        await interaction.response.send_message('❌ Primero configura el canal del panel. Usa /config_ticket_category para configurar la categoría de tickets.', ephemeral=True)
         return
     
     panel_channel = interaction.guild.get_channel(panel_channel_id)
@@ -2572,7 +2572,7 @@ async def delete_ticket_button(interaction: discord.Interaction, button_id: str)
             break
     
     if not button_to_delete:
-        await interaction.response.send_message('❌ Botón no encontrado. Usa /config_tickets → "🗑️ Botones" para ver los IDs.', ephemeral=True)
+        await interaction.response.send_message('❌ Botón no encontrado. Verifica los IDs de botones configurados.', ephemeral=True)
         return
     
     # Eliminar el botón
