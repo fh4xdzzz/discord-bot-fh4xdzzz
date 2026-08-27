@@ -1991,9 +1991,7 @@ class HelpView(discord.ui.View):
                 'emoji': '🎭',
                 'color': 0x9b59b6,
                 'commands': [
-                    {'name': '/add_auto_role', 'desc': 'Agrega un rol automático'},
-                    {'name': '/remove_auto_role', 'desc': 'Elimina un rol automático'},
-                    {'name': '/list_auto_roles', 'desc': 'Lista los roles automáticos'}
+                    {'name': '/config_auto_roles', 'desc': 'Configuración avanzada de auto-roles'}
                 ]
             },
             {
@@ -2001,9 +1999,7 @@ class HelpView(discord.ui.View):
                 'emoji': '⭐',
                 'color': 0xFFD700,
                 'commands': [
-                    {'name': '/add_level_role', 'desc': 'Agrega un rol por nivel'},
-                    {'name': '/remove_level_role', 'desc': 'Elimina un rol por nivel'},
-                    {'name': '/list_level_roles', 'desc': 'Lista roles por nivel'}
+                    {'name': '/config_level_roles', 'desc': 'Configuración avanzada de roles por nivel'}
                 ]
             },
             {
@@ -2011,9 +2007,7 @@ class HelpView(discord.ui.View):
                 'emoji': '🎭',
                 'color': 0x9b59b6,
                 'commands': [
-                    {'name': '/create_role_panel', 'desc': 'Crea panel de roles reaccionables'},
-                    {'name': '/add_reaction_role', 'desc': 'Agrega rol reaccionable'},
-                    {'name': '/list_reaction_roles', 'desc': 'Lista roles reaccionables'}
+                    {'name': '/config_reaction_roles', 'desc': 'Configuración avanzada de roles reaccionables'}
                 ]
             },
             {
@@ -2032,6 +2026,7 @@ class HelpView(discord.ui.View):
                 'emoji': '🎉',
                 'color': 0xFFD700,
                 'commands': [
+                    {'name': '/config_giveaways', 'desc': 'Configuración avanzada de sorteos'},
                     {'name': '/config_giveaway_channel', 'desc': 'Configura el canal de sorteos'},
                     {'name': '/config_announce_channel', 'desc': 'Configura el canal de anuncios'},
                     {'name': '/create_giveaway', 'desc': 'Crea un nuevo sorteo'},
@@ -3263,7 +3258,144 @@ async def config_log_channel(interaction: discord.Interaction, channel: discord.
     await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}')
     print(f'[Logs] Canal de logs configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros')
+# Sistema de Auto-Roles
+# Vista avanzada de configuración de auto-roles
+class AutoRoleConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        auto_roles = get_server_setting(int(self.server_id), 'auto_roles', [])
+        
+        embed = discord.Embed(
+            title='🎭 Configuración de Auto-Roles',
+            description='Configura los roles que se asignan automáticamente a nuevos miembros',
+            color=0x9b59b6
+        )
+        
+        # Auto-roles configurados
+        if auto_roles:
+            role_list = []
+            for role_id in auto_roles:
+                role = self.interaction.guild.get_role(role_id)
+                if role:
+                    role_list.append(role.mention)
+            
+            if role_list:
+                embed.add_field(name='🎭 Auto-Roles Configurados', value=', '.join(role_list), inline=False)
+                embed.add_field(name='📊 Cantidad', value=f'{len(auto_roles)} rol(es)', inline=True)
+            else:
+                embed.add_field(name='🎭 Auto-Roles Configurados', value='❌ No configurados (roles eliminados)', inline=False)
+        else:
+            embed.add_field(name='🎭 Auto-Roles Configurados', value='❌ No configurados', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar los auto-roles')
+        return embed
+    
+    @discord.ui.button(label='➕ Agregar Rol', style=discord.ButtonStyle.success)
+    async def add_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AddAutoRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🗑️ Eliminar Rol', style=discord.ButtonStyle.danger)
+    async def remove_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = RemoveAutoRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Roles', style=discord.ButtonStyle.secondary)
+    async def list_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+        
+        if not auto_roles:
+            await interaction.response.send_message('❌ No hay auto-roles configurados', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='🎭 Auto-Roles Configurados',
+            color=0x9b59b6
+        )
+        
+        for role_id in auto_roles:
+            role = interaction.guild.get_role(role_id)
+            if role:
+                embed.add_field(name=role.name, value=f'ID: `{role_id}`', inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para agregar auto-rol
+class AddAutoRoleModal(discord.ui.Modal, title='Agregar Auto-Rol'):
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+            
+            if not auto_roles:
+                auto_roles = []
+            
+            if role_id in auto_roles:
+                await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.', ephemeral=True)
+                return
+            
+            auto_roles.append(role_id)
+            set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para eliminar auto-rol
+class RemoveAutoRoleModal(discord.ui.Modal, title='Eliminar Auto-Rol'):
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol a eliminar', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            
+            auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+            
+            if not auto_roles or role_id not in auto_roles:
+                await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.', ephemeral=True)
+                return
+            
+            auto_roles.remove(role_id)
+            set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+            save_data()
+            
+            role_name = role.name if role else f'ID {role_id}'
+            await interaction.response.send_message(f'✅ Auto-rol eliminado: {role_name}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_auto_roles', description='Configuración avanzada de auto-roles')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_auto_roles(interaction: discord.Interaction):
+    view = AutoRoleConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Comandos individuales de auto-roles (mantenidos para compatibilidad)
+@bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros (Usa /config_auto_roles)')
 @discord.app_commands.describe(role='Rol a asignar automáticamente')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
@@ -3273,16 +3405,16 @@ async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
         auto_roles = []
     
     if role.id in auto_roles:
-        await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.', ephemeral=True)
+        await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
         return
     
     auto_roles.append(role.id)
     set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
     save_data()
     
-    await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}')
+    await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
 
-@bot.tree.command(name='remove_auto_role', description='Elimina un rol de los auto-roles')
+@bot.tree.command(name='remove_auto_role', description='Elimina un rol de los auto-roles (Usa /config_auto_roles)')
 @discord.app_commands.describe(role='Rol a eliminar de auto-roles')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_auto_role(interaction: discord.Interaction, role: discord.Role):
@@ -3293,14 +3425,14 @@ async def remove_auto_role(interaction: discord.Interaction, role: discord.Role)
         return
     
     if role.id not in auto_roles:
-        await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.', ephemeral=True)
+        await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
         return
     
     auto_roles.remove(role.id)
     set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
     save_data()
     
-    await interaction.response.send_message(f'✅ Auto-rol eliminado: {role.mention}')
+    await interaction.response.send_message(f'✅ Auto-rol eliminado: {role.mention}\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
 
 @bot.tree.command(name='list_auto_roles', description='Lista los roles que se asignan automáticamente')
 async def list_auto_roles(interaction: discord.Interaction):
@@ -3465,23 +3597,610 @@ async def check_verification_status(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+# Sistema de Roles por Nivel
+# Vista avanzada de configuración de roles por nivel
+class LevelRoleConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        level_roles = get_server_setting(int(self.server_id), 'level_roles', {})
+        
+        embed = discord.Embed(
+            title='⭐ Configuración de Roles por Nivel',
+            description='Configura los roles que se asignan automáticamente según el nivel',
+            color=0xFFD700
+        )
+        
+        # Roles por nivel configurados
+        if level_roles:
+            role_list = []
+            for level, role_id in sorted(level_roles.items(), key=lambda x: int(x[0])):
+                role = self.interaction.guild.get_role(role_id)
+                if role:
+                    role_list.append(f'Nivel {level}: {role.mention}')
+            
+            if role_list:
+                embed.add_field(name='⭐ Roles por Nivel', value='\n'.join(role_list), inline=False)
+                embed.add_field(name='📊 Cantidad', value=f'{len(level_roles)} nivel(es)', inline=True)
+            else:
+                embed.add_field(name='⭐ Roles por Nivel', value='❌ No configurados (roles eliminados)', inline=False)
+        else:
+            embed.add_field(name='⭐ Roles por Nivel', value='❌ No configurados', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar los roles por nivel')
+        return embed
+    
+    @discord.ui.button(label='➕ Agregar Rol', style=discord.ButtonStyle.success)
+    async def add_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AddLevelRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🗑️ Eliminar Rol', style=discord.ButtonStyle.danger)
+    async def remove_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = RemoveLevelRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Roles', style=discord.ButtonStyle.secondary)
+    async def list_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        level_roles = get_server_setting(interaction.guild.id, 'level_roles', {})
+        
+        if not level_roles:
+            await interaction.response.send_message('❌ No hay roles por nivel configurados', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='⭐ Roles por Nivel Configurados',
+            color=0xFFD700
+        )
+        
+        for level, role_id in sorted(level_roles.items(), key=lambda x: int(x[0])):
+            role = interaction.guild.get_role(role_id)
+            if role:
+                embed.add_field(name=f'Nivel {level}', value=f'{role.mention} (ID: `{role_id}`)', inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para agregar rol por nivel
+class AddLevelRoleModal(discord.ui.Modal, title='Agregar Rol por Nivel'):
+    level = discord.ui.TextInput(label='Nivel', placeholder='Ej: 5', max_length=5, required=True)
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            level = int(self.level.value)
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            if level < 1:
+                await interaction.response.send_message('❌ El nivel debe ser mayor a 0.', ephemeral=True)
+                return
+            
+            level_roles = get_server_setting(interaction.guild.id, 'level_roles', {})
+            
+            if not level_roles:
+                level_roles = {}
+            
+            if str(level) in level_roles:
+                await interaction.response.send_message('⚠️ Este nivel ya tiene un rol configurado.', ephemeral=True)
+                return
+            
+            level_roles[str(level)] = role_id
+            set_server_setting(interaction.guild.id, 'level_roles', level_roles)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Rol por nivel agregado: Nivel {level} → {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ Valores inválidos. El nivel y el ID deben ser números.', ephemeral=True)
+
+# Modal para eliminar rol por nivel
+class RemoveLevelRoleModal(discord.ui.Modal, title='Eliminar Rol por Nivel'):
+    level = discord.ui.TextInput(label='Nivel', placeholder='Ej: 5', max_length=5, required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            level = int(self.level.value)
+            
+            level_roles = get_server_setting(interaction.guild.id, 'level_roles', {})
+            
+            if not level_roles or str(level) not in level_roles:
+                await interaction.response.send_message('❌ Este nivel no tiene un rol configurado.', ephemeral=True)
+                return
+            
+            role_id = level_roles[str(level)]
+            role = interaction.guild.get_role(role_id)
+            role_name = role.name if role else f'ID {role_id}'
+            
+            del level_roles[str(level)]
+            set_server_setting(interaction.guild.id, 'level_roles', level_roles)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Rol por nivel eliminado: Nivel {level} ({role_name})', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ Nivel inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_level_roles', description='Configuración avanzada de roles por nivel')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_level_roles(interaction: discord.Interaction):
+    view = LevelRoleConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Roles Reaccionables
+# Vista avanzada de configuración de roles reaccionables
+class ReactionRoleConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        reaction_roles = get_server_setting(int(self.server_id), 'reaction_roles', {})
+        
+        embed = discord.Embed(
+            title='🎭 Configuración de Roles Reaccionables',
+            description='Configura los roles que se asignan al reaccionar a mensajes',
+            color=0x9b59b6
+        )
+        
+        # Roles reaccionables configurados
+        if reaction_roles:
+            role_list = []
+            for emoji, role_id in reaction_roles.items():
+                role = self.interaction.guild.get_role(role_id)
+                if role:
+                    role_list.append(f'{emoji} → {role.mention}')
+            
+            if role_list:
+                embed.add_field(name='🎭 Roles Reaccionables', value='\n'.join(role_list), inline=False)
+                embed.add_field(name='📊 Cantidad', value=f'{len(reaction_roles)} rol(es)', inline=True)
+            else:
+                embed.add_field(name='🎭 Roles Reaccionables', value='❌ No configurados (roles eliminados)', inline=False)
+        else:
+            embed.add_field(name='🎭 Roles Reaccionables', value='❌ No configurados', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar los roles reaccionables')
+        return embed
+    
+    @discord.ui.button(label='➕ Agregar Rol', style=discord.ButtonStyle.success)
+    async def add_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AddReactionRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🗑️ Eliminar Rol', style=discord.ButtonStyle.danger)
+    async def remove_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = RemoveReactionRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Roles', style=discord.ButtonStyle.secondary)
+    async def list_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+        
+        if not reaction_roles:
+            await interaction.response.send_message('❌ No hay roles reaccionables configurados', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='🎭 Roles Reaccionables Configurados',
+            color=0x9b59b6
+        )
+        
+        for emoji, role_id in reaction_roles.items():
+            role = interaction.guild.get_role(role_id)
+            if role:
+                embed.add_field(name=emoji, value=f'{role.mention} (ID: `{role_id}`)', inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='📢 Crear Panel', style=discord.ButtonStyle.primary)
+    async def create_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = CreateReactionPanelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para agregar rol reaccionable
+class AddReactionRoleModal(discord.ui.Modal, title='Agregar Rol Reaccionable'):
+    emoji = discord.ui.TextInput(label='Emoji', placeholder='Ej: 🎉', max_length=10, required=True)
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            emoji = self.emoji.value
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+            
+            if not reaction_roles:
+                reaction_roles = {}
+            
+            if emoji in reaction_roles:
+                await interaction.response.send_message('⚠️ Este emoji ya tiene un rol configurado.', ephemeral=True)
+                return
+            
+            reaction_roles[emoji] = role_id
+            set_server_setting(interaction.guild.id, 'reaction_roles', reaction_roles)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Rol reaccionable agregado: {emoji} → {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para eliminar rol reaccionable
+class RemoveReactionRoleModal(discord.ui.Modal, title='Eliminar Rol Reaccionable'):
+    emoji = discord.ui.TextInput(label='Emoji', placeholder='Ej: 🎉', max_length=10, required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        emoji = self.emoji.value
+        
+        reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+        
+        if not reaction_roles or emoji not in reaction_roles:
+            await interaction.response.send_message('❌ Este emoji no tiene un rol configurado.', ephemeral=True)
+            return
+        
+        role_id = reaction_roles[emoji]
+        role = interaction.guild.get_role(role_id)
+        role_name = role.name if role else f'ID {role_id}'
+        
+        del reaction_roles[emoji]
+        set_server_setting(interaction.guild.id, 'reaction_roles', reaction_roles)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Rol reaccionable eliminado: {emoji} ({role_name})', ephemeral=True)
+
+# Modal para crear panel de roles reaccionables
+class CreateReactionPanelModal(discord.ui.Modal, title='Crear Panel de Roles'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Canal donde enviar el panel', required=True)
+    message = discord.ui.TextInput(label='Mensaje del Panel', placeholder='Reacciona para obtener roles', default='Reacciona a este mensaje para obtener roles:', style=discord.TextStyle.paragraph, max_length=500, required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+            
+            if not reaction_roles:
+                await interaction.response.send_message('❌ No hay roles reaccionables configurados. Primero agrega roles.', ephemeral=True)
+                return
+            
+            embed = discord.Embed(
+                title='🎭 Roles Reaccionables',
+                description=self.message.value or 'Reacciona a este mensaje para obtener roles:',
+                color=0x9b59b6
+            )
+            
+            for emoji, role_id in reaction_roles.items():
+                role = interaction.guild.get_role(role_id)
+                if role:
+                    embed.add_field(name=emoji, value=role.mention, inline=True)
+            
+            message = await channel.send(embed=embed)
+            
+            # Agregar reacciones
+            for emoji in reaction_roles.keys():
+                try:
+                    await message.add_reaction(emoji)
+                except:
+                    pass
+            
+            await interaction.response.send_message(f'✅ Panel de roles enviado a {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_reaction_roles', description='Configuración avanzada de roles reaccionables')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_reaction_roles(interaction: discord.Interaction):
+    view = ReactionRoleConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
 # Sistema de Sorteos
-@bot.tree.command(name='config_giveaway_channel', description='Configura el canal para sorteos')
+# Vista avanzada de configuración de sorteos
+class GiveawayConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        giveaway_channel_id = get_server_setting(int(self.server_id), 'giveaway_channel')
+        announcement_channel_id = get_server_setting(int(self.server_id), 'giveaway_announcement_channel')
+        
+        # Obtener sorteos activos
+        active_giveaways = 0
+        if 'servers' in data and self.server_id in data['servers'] and 'giveaways' in data['servers'][self.server_id]:
+            active_giveaways = len(data['servers'][self.server_id]['giveaways'])
+        
+        embed = discord.Embed(
+            title='🎉 Configuración de Sorteos',
+            description='Configura todas las opciones del sistema de sorteos',
+            color=0xFFD700
+        )
+        
+        # Canal de sorteos
+        if giveaway_channel_id:
+            channel = self.interaction.guild.get_channel(giveaway_channel_id)
+            embed.add_field(name='📁 Canal de Sorteos', value=channel.mention if channel else 'No configurado', inline=False)
+        else:
+            embed.add_field(name='📁 Canal de Sorteos', value='❌ No configurado', inline=False)
+        
+        # Canal de anuncios
+        if announcement_channel_id:
+            channel = self.interaction.guild.get_channel(announcement_channel_id)
+            embed.add_field(name='📢 Canal de Anuncios', value=channel.mention if channel else 'No configurado', inline=False)
+        else:
+            embed.add_field(name='📢 Canal de Anuncios', value='❌ No configurado', inline=False)
+        
+        # Sorteos activos
+        embed.add_field(name='🎯 Sorteos Activos', value=f'{active_giveaways} sorteo(s)', inline=True)
+        
+        embed.set_footer(text='Usa los botones para configurar cada opción')
+        return embed
+    
+    @discord.ui.button(label='📁 Canal Sorteos', style=discord.ButtonStyle.primary)
+    async def set_giveaway_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = GiveawayChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📢 Canal Anuncios', style=discord.ButtonStyle.primary)
+    async def set_announcement_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AnnouncementChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🎉 Crear Sorteo', style=discord.ButtonStyle.success)
+    async def create_giveaway(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = CreateGiveawayModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Sorteos', style=discord.ButtonStyle.secondary)
+    async def list_giveaways(self, interaction: discord.Interaction, button: discord.ui.Button):
+        server_id = str(interaction.guild.id)
+        
+        if 'servers' not in data or server_id not in data['servers'] or 'giveaways' not in data['servers'][server_id]:
+            await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+            return
+        
+        server_giveaways = data['servers'][server_id]['giveaways']
+        
+        if not server_giveaways:
+            await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='🎉 Sorteos Activos',
+            color=0xFFD700
+        )
+        
+        for giveaway_id, giveaway in server_giveaways.items():
+            end_time = datetime.fromisoformat(giveaway['end_time'])
+            remaining = (end_time - datetime.now()).total_seconds()
+            remaining_str = f"{int(remaining // 60)} minutos" if remaining > 0 else "Finalizado"
+            
+            embed.add_field(
+                name=f'🎁 {giveaway["prize"]}',
+                value=f'👥 {len(giveaway["participants"])} participantes\n⏰ {remaining_str}\n🏆 {giveaway["winners"]} ganador(es)\n📋 ID: `{giveaway_id}`',
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar canal de sorteos
+class GiveawayChannelModal(discord.ui.Modal, title='Configurar Canal de Sorteos'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de sorteos', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'giveaway_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de sorteos desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'giveaway_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para configurar canal de anuncios
+class AnnouncementChannelModal(discord.ui.Modal, title='Configurar Canal de Anuncios'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de anuncios', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de anuncios desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de anuncios configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para crear sorteo
+class CreateGiveawayModal(discord.ui.Modal, title='Crear Sorteo'):
+    prize = discord.ui.TextInput(label='Premio', placeholder='Ej: Nitro 1 mes', max_length=100, required=True)
+    duration = discord.ui.TextInput(label='Duración (minutos)', placeholder='Ej: 60', default='60', max_length=5, required=True)
+    winners = discord.ui.TextInput(label='Cantidad de ganadores', placeholder='Ej: 1', default='1', max_length=2, required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            duration = int(self.duration.value)
+            winners = int(self.winners.value)
+            
+            if duration < 1 or duration > 10080:  # Máximo 7 días
+                await interaction.response.send_message('❌ La duración debe estar entre 1 y 10080 minutos (7 días).', ephemeral=True)
+                return
+            
+            if winners < 1 or winners > 50:
+                await interaction.response.send_message('❌ La cantidad de ganadores debe estar entre 1 y 50.', ephemeral=True)
+                return
+            
+            # Crear el sorteo usando la lógica existente
+            server_id = str(interaction.guild.id)
+            giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel')
+            giveaway_announcement_channel_id = get_server_setting(interaction.guild.id, 'giveaway_announcement_channel')
+            
+            if not giveaway_channel_id:
+                await interaction.response.send_message('❌ Primero configura el canal de sorteos en el panel.', ephemeral=True)
+                return
+            
+            channel = bot.get_channel(giveaway_channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal de sorteos no encontrado', ephemeral=True)
+                return
+            
+            try:
+                if 'servers' not in data:
+                    data['servers'] = {}
+                if server_id not in data['servers']:
+                    data['servers'][server_id] = {}
+                if 'giveaways' not in data['servers'][server_id]:
+                    data['servers'][server_id]['giveaways'] = {}
+                
+                end_time = datetime.now() + timedelta(minutes=duration)
+                
+                embed = discord.Embed(
+                    title='🎉 ¡SORTEO!',
+                    description=f'**Premio:** {self.prize.value}\n\nReacciona con 🎉 para participar',
+                    color=0xFFD700
+                )
+                
+                embed.add_field(name='🏆 Ganadores', value=str(winners), inline=True)
+                embed.add_field(name='⏰ Tiempo restante', value=f'{duration} minutos', inline=True)
+                embed.add_field(name='👥 Participantes', value='0', inline=True)
+                embed.add_field(name='📅 Finaliza', value=end_time.strftime('%d/%m/%Y %H:%M'), inline=False)
+                embed.set_footer(text=f'Organizado por {interaction.user.name}')
+                embed.set_thumbnail(url=bot.user.display_avatar.url)
+                
+                message = await channel.send(embed=embed)
+                await message.add_reaction('🎉')
+                
+                giveaway_id = str(message.id)
+                data['servers'][server_id]['giveaways'][giveaway_id] = {
+                    'prize': self.prize.value,
+                    'end_time': end_time.isoformat(),
+                    'winners': winners,
+                    'participants': [],
+                    'organizer': str(interaction.user.id),
+                    'channel_id': channel.id,
+                    'message_id': message.id,
+                    'announcement_messages': []
+                }
+                save_data()
+                
+                await interaction.response.send_message(f'✅ Sorteo creado en {channel.mention}. Terminará a las {end_time.strftime("%H:%M")}', ephemeral=True)
+                
+                if giveaway_announcement_channel_id:
+                    try:
+                        announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
+                        if announcement_channel:
+                            announcement_embed = discord.Embed(
+                                title='🎉 ¡Nuevo Sorteo Creado!',
+                                description=f'{interaction.user.mention} ha iniciado un nuevo sorteo de **{self.prize.value}**',
+                                color=0xFFD700
+                            )
+                            announcement_embed.add_field(name='🎁 Premio', value=self.prize.value, inline=True)
+                            announcement_embed.add_field(name='⏰ Duración', value=f'{duration} minutos', inline=True)
+                            announcement_embed.add_field(name='👥 Ganadores', value=str(winners), inline=True)
+                            announcement_embed.add_field(name='📁 Canal', value=channel.mention, inline=False)
+                            announcement_embed.add_field(name='🎯 Cómo participar', value=f'Reacciona con 🎉 en {channel.mention}', inline=False)
+                            announcement_embed.set_footer(text=f'Organizado por {interaction.user.name}')
+                            announcement_embed.set_thumbnail(url=bot.user.display_avatar.url)
+                            
+                            await announcement_channel.send(embed=announcement_embed)
+                    except Exception as e:
+                        print(f'[Sorteo] Error al enviar anuncio: {e}')
+                
+                bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60, server_id))
+                
+            except Exception as e:
+                await interaction.response.send_message(f'❌ Error al crear sorteo: {e}', ephemeral=True)
+                
+        except ValueError:
+            await interaction.response.send_message('❌ Valores inválidos. La duración y ganadores deben ser números.', ephemeral=True)
+
+@bot.tree.command(name='config_giveaways', description='Configuración avanzada del sistema de sorteos')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_giveaways(interaction: discord.Interaction):
+    view = GiveawayConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Comandos individuales de sorteos (mantenidos para compatibilidad pero marcados como obsoletos)
+@bot.tree.command(name='config_giveaway_channel', description='Configura el canal para sorteos (Usa /config_giveaways)')
 @discord.app_commands.describe(channel='Canal para sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_giveaway_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'giveaway_channel', channel.id)
     save_data()
-    await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}')
+    await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}\n💡 Usa /config_giveaways para más opciones', ephemeral=True)
     print(f'[Config] Canal de sorteos configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos')
+@bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos (Usa /config_giveaways)')
 @discord.app_commands.describe(channel='Canal para anuncios de sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_announce_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel.id)
     save_data()
-    await interaction.response.send_message(f'✅ Canal de anuncios de sorteos configurado: {channel.mention}')
+    await interaction.response.send_message(f'✅ Canal de anuncios de sorteos configurado: {channel.mention}\n💡 Usa /config_giveaways para más opciones', ephemeral=True)
     print(f'[Config] Canal de anuncios configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_giveaway', description='Crea un nuevo sorteo')
