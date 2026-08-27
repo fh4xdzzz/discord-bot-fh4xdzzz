@@ -4331,14 +4331,22 @@ async def update_giveaway_timers():
                                 message = await channel.fetch_message(giveaway['message_id'])
                                 embed = message.embeds[0]
                                 
+                                # Actualizar contador de participantes basado en reacciones actuales
+                                participants_count = 0
+                                for reaction in message.reactions:
+                                    if str(reaction.emoji) == '🎉':
+                                        participants_count = reaction.count - 1  # Restar 1 por la reacción del bot
+                                        break
+                                
                                 # Actualizar el campo de tiempo restante
                                 for i, field in enumerate(embed.fields):
                                     if field.name == '⏰ Tiempo restante':
                                         embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                        break
+                                    elif field.name == '👥 Participantes':
+                                        embed.set_field_at(i, name='👥 Participantes', value=str(participants_count), inline=True)
                                 
                                 await message.edit(embed=embed)
-                                print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante')
+                                print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante, {participants_count} participantes')
                             except discord.NotFound:
                                 # El mensaje fue eliminado, marcar para eliminar
                                 print(f'[Sorteo] Mensaje eliminado, marcando sorteo {giveaway_id} para eliminar')
