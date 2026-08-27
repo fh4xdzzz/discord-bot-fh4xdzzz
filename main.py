@@ -198,6 +198,14 @@ def save_data_immediate():
         logger.error(f'Error al guardar datos: {e}')
         raise
 
+async def save_data_async():
+    """Guarda datos de forma asíncrona para operaciones en paralelo"""
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, save_data_immediate)
+    except Exception as e:
+        logger.error(f'Error al guardar datos asíncronamente: {e}')
+
 # Caché de usuarios para evitar llamadas repetitivas a la API
 _user_cache = {}
 _cache_expiry = 300  # 5 minutos
@@ -1376,6 +1384,50 @@ async def on_raw_reaction_remove(payload):
                 logger.warning(f'Error de permisos en servidor {guild.name}')
             except Exception as e:
                 logger.error(f'Error: {e}')
+    
+    # Sorteos (verificar en todos los servidores)
+    if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
+        if str(payload.message_id) in data['servers'][server_id]['giveaways']:
+            try:
+                giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
+                
+                if str(payload.emoji) == '🎉':
+                    guild = bot.get_guild(payload.guild_id)
+                    member = guild.get_member(payload.user_id)
+                    
+                    if member and not member.bot:
+                        user_id = str(member.id)
+                        
+                        if user_id in giveaway['participants']:
+                            giveaway['participants'].remove(user_id)
+                            data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
+                            
+                            # Actualizar embed y guardar datos en paralelo
+                            try:
+                                channel = bot.get_channel(giveaway['channel_id'])
+                                if channel:
+                                    message = await channel.fetch_message(int(giveaway['message_id']))
+                                    embed = message.embeds[0]
+                                    
+                                    # Actualizar el campo de participantes
+                                    for i, field in enumerate(embed.fields):
+                                        if field.name == '👥 Participantes':
+                                            embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
+                                            break
+                                    
+                                    # Guardar datos y actualizar embed en paralelo
+                                    await asyncio.gather(
+                                        message.edit(embed=embed),
+                                        save_data_async()
+                                    )
+                                    logger.debug(f'Contador actualizado: {len(giveaway["participants"])} participantes')
+                            except Exception as e:
+                                logger.error(f'Error al actualizar embed: {e}')
+                                save_data()
+                            
+                            logger.info(f'{member.name} salió del sorteo {giveaway["prize"]}')
+            except Exception as e:
+                logger.error(f'Error en sorteo: {e}')
 
     # Sorteos (verificar en todos los servidores)
     server_id = str(payload.guild_id)
@@ -1395,40 +1447,32 @@ async def on_raw_reaction_remove(payload):
                         if user_id not in giveaway['participants']:
                             giveaway['participants'].append(user_id)
                             data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
-                            save_data()
-                            logger.info(f'{member.name} se unió al sorteo {giveaway["prize"]}')
                             
-                            # Actualizar el embed del sorteo con el nuevo contador
+                            # Actualizar embed y guardar datos en paralelo para mayor velocidad
                             try:
                                 channel = bot.get_channel(giveaway['channel_id'])
                                 if channel:
-                                    message = await channel.fetch_message(giveaway['message_id'])
+                                    message = await channel.fetch_message(int(giveaway['message_id']))
                                     embed = message.embeds[0]
                                     
-                                    # Actualizar el campo de participantes
+                                    # Actualizar el campo de participantes directamente sin búsqueda
                                     for i, field in enumerate(embed.fields):
                                         if field.name == '👥 Participantes':
                                             embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
                                             break
                                     
-                                    await message.edit(embed=embed)
-                                    logger.info(f'Contador actualizado: {len(giveaway["participants"])} participantes')
+                                    # Guardar datos y actualizar embed en paralelo
+                                    await asyncio.gather(
+                                        message.edit(embed=embed),
+                                        save_data_async()
+                                    )
+                                    logger.debug(f'Contador actualizado: {len(giveaway["participants"])} participantes')
                             except Exception as e:
                                 logger.error(f'Error al actualizar embed: {e}')
+                                # Fallback: guardar datos sí o sí
+                                save_data()
                             
-                            # Log de participación en sorteo
-                            await send_log(
-                                guild=guild,
-                                title='Participación en Sorteo',
-                                description=f'{member.mention} se ha unido al sorteo',
-                                color=0xFFD700,
-                                fields=[
-                                    {'name': 'Usuario', 'value': member.name, 'inline': True},
-                                    {'name': 'Premio', 'value': giveaway['prize'], 'inline': True},
-                                    {'name': 'Total participantes', 'value': str(len(giveaway['participants'])), 'inline': True}
-                                ],
-                                author={'name': member.name, 'icon_url': member.display_avatar.url}
-                            )
+                            logger.info(f'{member.name} se unió al sorteo {giveaway["prize"]}')
                         else:
                             logger.debug(f'{member.name} ya participó en el sorteo')
             except Exception as e:
@@ -3541,7 +3585,7 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
             'participants': [],
             'organizer': str(interaction.user.id),
             'channel_id': channel.id,
-            'message_id': message.id,
+            'message_id': str(message.id),  # Guardar como string para consistencia
             'announcement_messages': []  # Guardar IDs de mensajes de anuncios
         }
         save_data()
@@ -3575,6 +3619,7 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60, server_id))
         
     except Exception as e:
+        logger.error(f'Error al crear sorteo: {e}')
         await interaction.followup.send(f'❌ Error al crear sorteo: {e}', ephemeral=True)
 
 async def end_giveaway_after_delay(giveaway_id, delay, server_id=None):
@@ -3602,10 +3647,10 @@ async def end_giveaway(giveaway_id, server_id=None):
             return
         
         try:
-            message = await channel.fetch_message(giveaway['message_id'])
+            message = await channel.fetch_message(int(giveaway['message_id']))
         except discord.NotFound:
             # El mensaje fue eliminado, eliminar el sorteo de la base de datos
-            print(f'[Sorteo] Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
+            logger.warning(f'Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
             if server_id:
                 del data['servers'][server_id]['giveaways'][giveaway_id]
             save_data()
@@ -3696,13 +3741,13 @@ async def end_giveaway(giveaway_id, server_id=None):
                 if announcement_channel:
                     for message_id in giveaway['announcement_messages']:
                         try:
-                            message = await announcement_channel.fetch_message(message_id)
+                            message = await announcement_channel.fetch_message(int(message_id))
                             await message.delete()
-                            print(f'[Sorteo] Mensaje de anuncio eliminado: {message_id}')
+                            logger.info(f'Mensaje de anuncio eliminado: {message_id}')
                         except:
                             pass  # Mensaje ya no existe
             except Exception as e:
-                print(f'[Sorteo] Error al eliminar mensajes de anuncio: {e}')
+                logger.error(f'Error al eliminar mensajes de anuncio: {e}')
         
         # Eliminar sorteo de la lista
         if server_id:
