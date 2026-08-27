@@ -546,72 +546,73 @@ async def update_giveaway_timers():
                             print(f'[Sorteo] Error en actualización del sorteo {giveaway_id}: {e}')
             
             # Fallback a sorteos globales para compatibilidad
-            for giveaway_id, giveaway in giveaways.items():
-                try:
-                    end_time = datetime.fromisoformat(giveaway['end_time'])
-                    time_left = end_time - datetime.now()
-                    
-                    if time_left.total_seconds() > 0:
-                        # Actualizar el embed con el tiempo restante
-                        channel = bot.get_channel(giveaway['channel_id'])
-                        if channel:
-                            try:
-                                message = await channel.fetch_message(giveaway['message_id'])
-                                embed = message.embeds[0]
-                                
-                                # Formatear el tiempo restante
-                                hours = int(time_left.total_seconds() // 3600)
-                                minutes = int((time_left.total_seconds() % 3600) // 60)
-                                seconds = int(time_left.total_seconds() % 60)
-                                
-                                if hours > 0:
-                                    time_str = f'{hours}h {minutes}m {seconds}s'
-                                elif minutes > 0:
-                                    time_str = f'{minutes}m {seconds}s'
-                                else:
-                                    time_str = f'{seconds}s'
-                                
-                                # Actualizar el campo de tiempo
-                                for i, field in enumerate(embed.fields):
-                                    if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
-                                        embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                        break
-                                
-                                await message.edit(embed=embed)
-                                print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
-                            except:
-                                pass  # Mensaje ya no existe, puede que fue eliminado
+            if 'giveaways' in data:
+                for giveaway_id, giveaway in data['giveaways'].items():
+                    try:
+                        end_time = datetime.fromisoformat(giveaway['end_time'])
+                        time_left = end_time - datetime.now()
                         
-                        # Enviar recordatorio en el canal de anuncios
-                        if giveaway_announcement_channel_id:
-                            try:
-                                announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                                if announcement_channel:
-                                    reminder_embed = discord.Embed(
-                                        title='🎉 ¡Sorteo en curso!',
-                                        description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
-                                        color=0xFFD700
-                                    )
-                                    reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                    reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
-                                    reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
-                                    reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
+                        if time_left.total_seconds() > 0:
+                            # Actualizar el embed con el tiempo restante
+                            channel = bot.get_channel(giveaway['channel_id'])
+                            if channel:
+                                try:
+                                    message = await channel.fetch_message(giveaway['message_id'])
+                                    embed = message.embeds[0]
                                     
-                                    # Enviar mensaje con @everyone
-                                    reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
+                                    # Formatear el tiempo restante
+                                    hours = int(time_left.total_seconds() // 3600)
+                                    minutes = int((time_left.total_seconds() % 3600) // 60)
+                                    seconds = int(time_left.total_seconds() % 60)
                                     
-                                    # Guardar el ID del mensaje para eliminarlo después
-                                    if 'announcement_messages' not in giveaway:
-                                        giveaway['announcement_messages'] = []
-                                    giveaway['announcement_messages'].append(reminder_message.id)
-                                    data['giveaways'][giveaway_id] = giveaway
-                                    save_data()
+                                    if hours > 0:
+                                        time_str = f'{hours}h {minutes}m {seconds}s'
+                                    elif minutes > 0:
+                                        time_str = f'{minutes}m {seconds}s'
+                                    else:
+                                        time_str = f'{seconds}s'
                                     
-                                    print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
-                            except Exception as e:
-                                print(f'[Sorteo] Error al enviar recordatorio: {e}')
-                except Exception as e:
-                    print(f'[Sorteo] Error en actualización: {e}')
+                                    # Actualizar el campo de tiempo
+                                    for i, field in enumerate(embed.fields):
+                                        if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
+                                            embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
+                                            break
+                                    
+                                    await message.edit(embed=embed)
+                                    print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
+                                except:
+                                    pass  # Mensaje ya no existe, puede que fue eliminado
+                            
+                            # Enviar recordatorio en el canal de anuncios
+                            if giveaway_announcement_channel_id:
+                                try:
+                                    announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
+                                    if announcement_channel:
+                                        reminder_embed = discord.Embed(
+                                            title='🎉 ¡Sorteo en curso!',
+                                            description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
+                                            color=0xFFD700
+                                        )
+                                        reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
+                                        reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
+                                        reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
+                                        reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
+                                        
+                                        # Enviar mensaje con @everyone
+                                        reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
+                                        
+                                        # Guardar el ID del mensaje para eliminarlo después
+                                        if 'announcement_messages' not in giveaway:
+                                            giveaway['announcement_messages'] = []
+                                        giveaway['announcement_messages'].append(reminder_message.id)
+                                        data['giveaways'][giveaway_id] = giveaway
+                                        save_data()
+                                        
+                                        print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
+                                except Exception as e:
+                                    print(f'[Sorteo] Error al enviar recordatorio: {e}')
+                    except Exception as e:
+                        print(f'[Sorteo] Error en actualización: {e}')
         except Exception as e:
             print(f'[Sorteo] Error general en actualización de temporizadores: {e}')
 
