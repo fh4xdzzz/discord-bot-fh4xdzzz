@@ -2249,7 +2249,7 @@ async def bot_servers(interaction: discord.Interaction):
 @bot.tree.command(name='ayuda', description='Muestra el panel de comandos del bot')
 async def ayuda(interaction: discord.Interaction):
     view = HelpView(interaction)
-    await interaction.response.send_message(embed=view.create_embed(), view=view)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
 
 @bot.tree.command(name='info', description='Muestra información del servidor')
 async def info(interaction: discord.Interaction):
