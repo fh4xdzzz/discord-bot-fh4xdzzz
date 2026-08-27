@@ -1918,6 +1918,9 @@ async def on_thread_delete(thread):
 
 # Función para asignar auto-roles
 async def assign_auto_roles(member):
+    server_id = str(member.guild.id)
+    auto_roles = get_server_setting(member.guild.id, 'auto_roles', [])
+    
     if not auto_roles:
         return
 
@@ -2234,7 +2237,7 @@ async def level(interaction: discord.Interaction):
     if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
         users = data['servers'][server_id]['users']
     else:
-        users = data.get('users', {})  # Fallback a global
+        users = {}
 
     if user_id in users:
         user_data = users[user_id]
@@ -2267,7 +2270,7 @@ async def top(interaction: discord.Interaction):
     if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
         users = data['servers'][server_id]['users']
     else:
-        users = data.get('users', {})  # Fallback a global
+        users = {}
     
     sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:10]
     
@@ -2291,7 +2294,6 @@ async def top(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_level_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'level_channel', channel.id)
-    data['config']['level_channel'] = channel.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Canal de nivel configurado: {channel.mention}')
     print(f'[Config] Canal de nivel configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
@@ -2301,7 +2303,6 @@ async def config_level_channel(interaction: discord.Interaction, channel: discor
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'welcome_channel', channel.id)
-    data['config']['welcome_channel'] = channel.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}')
     print(f'[Config] Canal de bienvenida configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
@@ -2572,7 +2573,6 @@ async def list_reaction_roles(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_ticket_category(interaction: discord.Interaction, category: discord.CategoryChannel):
     set_server_setting(interaction.guild.id, 'ticket_category', category.id)
-    data['config']['ticket_category'] = category.id  # Guardar en global para compatibilidad
     save_data()
     await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
     print(f'[Config] Categoría de tickets configurada en servidor {interaction.guild.name}: {category.name} (ID: {category.id})')
@@ -2582,16 +2582,13 @@ async def config_ticket_category(interaction: discord.Interaction, category: dis
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_ranking_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'ranking_channel', channel.id)
-    data['config']['ranking_channel'] = channel.id  # Guardar en global para compatibilidad
-    global ranking_channel_id
-    ranking_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de ranking configurado: {channel.mention}')
     print(f'[Config] Canal de ranking configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='create_ranking', description='Crea el mensaje de ranking en el canal configurado')
 async def create_ranking(interaction: discord.Interaction):
-    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel', data['config'].get('ranking_channel'))
+    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel')
     
     if not ranking_channel_id:
         await interaction.response.send_message('❌ Primero configura el canal de ranking con /config_ranking_channel', ephemeral=True)
@@ -2607,9 +2604,6 @@ async def create_ranking(interaction: discord.Interaction):
         message = await channel.send(embed=embed)
         
         set_server_setting(interaction.guild.id, 'ranking_message_id', message.id)
-        data['config']['ranking_message_id'] = message.id  # Guardar en global para compatibilidad
-        global ranking_message_id
-        ranking_message_id = message.id
         save_data()
         
         await interaction.response.send_message(f'✅ Ranking creado en {channel.mention}')
@@ -2626,9 +2620,6 @@ async def update_ranking_command(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_stream_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'stream_channel', channel.id)
-    data['config']['stream_channel'] = channel.id  # Guardar en global para compatibilidad
-    global stream_channel_id
-    stream_channel_id = channel.id
     save_data()
     await interaction.response.send_message(f'✅ Canal de notificaciones de streams configurado: {channel.mention}')
     print(f'[Config] Canal de streams configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
@@ -2641,7 +2632,7 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
         await interaction.response.send_message('❌ Plataforma no válida. Usa: tiktok, kick, twitch, youtube', ephemeral=True)
         return
     
-    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    streamers = get_server_setting(interaction.guild.id, 'streamers', [])
     
     if not streamers:
         streamers = []
@@ -2653,7 +2644,6 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
     
     streamers.append({'platform': platform, 'username': username})
     set_server_setting(interaction.guild.id, 'streamers', streamers)
-    data['config']['streamers'] = streamers  # Guardar en global para compatibilidad
     save_data()
     
     await interaction.response.send_message(f'✅ Streamer agregado: {username} ({platform})')
@@ -2662,7 +2652,7 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
 @discord.app_commands.describe(username='Nombre de usuario del streamer')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_streamer(interaction: discord.Interaction, username: str):
-    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    streamers = get_server_setting(interaction.guild.id, 'streamers', [])
     
     if not streamers:
         await interaction.response.send_message('❌ No hay streamers monitoreados.', ephemeral=True)
@@ -2672,7 +2662,6 @@ async def remove_streamer(interaction: discord.Interaction, username: str):
         if s['username'] == username:
             removed = streamers.pop(i)
             set_server_setting(interaction.guild.id, 'streamers', streamers)
-            data['config']['streamers'] = streamers  # Guardar en global para compatibilidad
             save_data()
             await interaction.response.send_message(f'✅ Streamer eliminado: {removed["username"]} ({removed["platform"]})')
             return
@@ -2681,7 +2670,7 @@ async def remove_streamer(interaction: discord.Interaction, username: str):
 
 @bot.tree.command(name='list_streamers', description='Lista los streamers monitoreados')
 async def list_streamers(interaction: discord.Interaction):
-    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    streamers = get_server_setting(interaction.guild.id, 'streamers', [])
     
     if not streamers:
         await interaction.response.send_message('❌ No hay streamers monitoreados.', ephemeral=True)
@@ -2736,15 +2725,15 @@ async def config_remove_banned_word(interaction: discord.Interaction, word: str)
 async def config_show(interaction: discord.Interaction):
     server_id = str(interaction.guild.id)
     
-    # Obtener configuración específica del servidor con fallback a global
-    level_channel_id = get_server_setting(interaction.guild.id, 'level_channel', data['config'].get('level_channel'))
-    welcome_channel_id = get_server_setting(interaction.guild.id, 'welcome_channel', data['config'].get('welcome_channel'))
-    ticket_category_id = get_server_setting(interaction.guild.id, 'ticket_category', data['config'].get('ticket_category'))
-    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel', data['config'].get('ranking_channel'))
-    stream_channel_id = get_server_setting(interaction.guild.id, 'stream_channel', data['config'].get('stream_channel'))
-    log_channel_id = get_server_setting(interaction.guild.id, 'log_channel', data['config'].get('log_channel'))
-    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', data['config'].get('auto_roles', []))
-    streamers = get_server_setting(interaction.guild.id, 'streamers', data['config'].get('streamers', []))
+    # Obtener configuración específica del servidor
+    level_channel_id = get_server_setting(interaction.guild.id, 'level_channel')
+    welcome_channel_id = get_server_setting(interaction.guild.id, 'welcome_channel')
+    ticket_category_id = get_server_setting(interaction.guild.id, 'ticket_category')
+    ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel')
+    stream_channel_id = get_server_setting(interaction.guild.id, 'stream_channel')
+    log_channel_id = get_server_setting(interaction.guild.id, 'log_channel')
+    auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+    streamers = get_server_setting(interaction.guild.id, 'streamers', [])
     
     embed = discord.Embed(
         title=f'⚙️ Configuración del Bot - {interaction.guild.name}',
