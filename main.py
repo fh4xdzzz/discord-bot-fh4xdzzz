@@ -77,18 +77,16 @@ def create_default_data():
             'verification_message_id': None,
             'verification_role': None,
             'verified_users': [],
-            'giveaway_channel': None,
-            'giveaway_announcement_channel': None,
+
             'notifications_channel': None,
             'log_channel': None,
             'notification_roles': {
                 'streams': None,
-                'giveaways': None,
                 'announcements': None,
                 'events': None
             }
         },
-        'giveaways': {},
+
         'user_notifications': {}
     }
 
@@ -100,7 +98,7 @@ def validate_data():
         'tickets': dict,
         'banned_words': list,
         'config': dict,
-        'giveaways': dict,
+
         'user_notifications': dict,
         'servers': dict
     }
@@ -118,8 +116,6 @@ def validate_data():
         'verification_message_id': (int, type(None)),
         'verification_role': (int, type(None)),
         'verified_users': list,
-        'giveaway_channel': (int, type(None)),
-        'giveaway_announcement_channel': (int, type(None)),
         'notifications_channel': (int, type(None)),
         'log_channel': (int, type(None)),
         'notification_roles': dict
@@ -154,7 +150,7 @@ def validate_data():
 
     # Validar notification_roles
     if 'notification_roles' in data['config']:
-        required_notification_roles = ['streams', 'giveaways', 'announcements', 'events']
+        required_notification_roles = ['streams', 'announcements', 'events']
         for role_type in required_notification_roles:
             if role_type not in data['config']['notification_roles']:
                 data['config']['notification_roles'][role_type] = None
@@ -464,10 +460,6 @@ async def on_ready():
     bot.loop.create_task(_auto_save())
     logger.info('Sistema de auto-save iniciado')
 
-    # Iniciar tarea de actualización de timers de sorteos
-    bot.loop.create_task(update_giveaway_timers())
-    print('[Sorteo] Sistema de actualización de timers iniciado')
-
     # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
         synced = await bot.tree.sync()
@@ -498,8 +490,6 @@ async def on_ready():
     bot.loop.create_task(check_streams_periodically())
 
     # Iniciar actualización de temporizadores de sorteos
-    bot.loop.create_task(update_giveaway_timers())
-
 # Actualización periódica del ranking
 async def update_ranking_periodically():
     while True:
@@ -525,159 +515,6 @@ async def check_streams_periodically():
         except Exception as e:
             logger.error(f'Error en monitoreo periódico: {e}')
             await asyncio.sleep(120)  # Esperar antes de reintentar
-
-# Actualización de temporizadores de sorteos
-async def update_giveaway_timers():
-    while True:
-        try:
-            await asyncio.sleep(300)  # Actualizar cada 5 minutos (reducido de 30s para evitar spam)
-            
-            # Procesar sorteos de cada servidor
-            if 'servers' in data:
-                for server_id, server_config in data['servers'].items():
-                    if 'giveaways' not in server_config:
-                        continue
-                    
-                    server_giveaways = server_config['giveaways']
-                    giveaway_announcement_channel_id = server_config.get('giveaway_announcement_channel')
-                    
-                    for giveaway_id, giveaway in server_giveaways.items():
-                        try:
-                            end_time = datetime.fromisoformat(giveaway['end_time'])
-                            time_left = end_time - datetime.now()
-                            
-                            if time_left.total_seconds() > 0:
-                                # Actualizar el embed con el tiempo restante
-                                channel = bot.get_channel(giveaway['channel_id'])
-                                if channel:
-                                    try:
-                                        message = await channel.fetch_message(giveaway['message_id'])
-                                        embed = message.embeds[0]
-                                        
-                                        # Formatear el tiempo restante
-                                        hours = int(time_left.total_seconds() // 3600)
-                                        minutes = int((time_left.total_seconds() % 3600) // 60)
-                                        seconds = int(time_left.total_seconds() % 60)
-                                        
-                                        if hours > 0:
-                                            time_str = f'{hours}h {minutes}m {seconds}s'
-                                        elif minutes > 0:
-                                            time_str = f'{minutes}m {seconds}s'
-                                        else:
-                                            time_str = f'{seconds}s'
-                                        
-                                        # Actualizar el campo de tiempo
-                                        for i, field in enumerate(embed.fields):
-                                            if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
-                                                embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                                break
-                                        
-                                        await message.edit(embed=embed)
-                                        logger.debug(f'Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
-                                    except Exception as e:
-                                        logger.error(f'Error al actualizar mensaje: {e}')
-                                
-                                # Enviar recordatorio en el canal de anuncios
-                                if giveaway_announcement_channel_id:
-                                    try:
-                                        announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                                        if announcement_channel:
-                                            reminder_embed = discord.Embed(
-                                                title='🎉 ¡Sorteo en curso!',
-                                                description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
-                                                color=0xFFD700
-                                            )
-                                            reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                            reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
-                                            reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
-                                            reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
-                                            
-                                            # Enviar mensaje con @everyone
-                                            reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
-                                            
-                                            # Guardar el ID del mensaje para eliminarlo después
-                                            if 'announcement_messages' not in giveaway:
-                                                giveaway['announcement_messages'] = []
-                                            giveaway['announcement_messages'].append(reminder_message.id)
-                                            data['servers'][server_id]['giveaways'][giveaway_id] = giveaway
-                                            save_data()
-                                            
-                                            logger.info(f'Recordatorio enviado para "{giveaway["prize"]}"')
-                                    except Exception as e:
-                                        logger.error(f'Error al enviar recordatorio: {e}')
-                        except Exception as e:
-                            logger.error(f'Error en actualización del sorteo {giveaway_id}: {e}')
-            
-            # Fallback a sorteos globales para compatibilidad
-            if 'giveaways' in data:
-                for giveaway_id, giveaway in data['giveaways'].items():
-                    try:
-                        end_time = datetime.fromisoformat(giveaway['end_time'])
-                        time_left = end_time - datetime.now()
-                        
-                        if time_left.total_seconds() > 0:
-                            # Actualizar el embed con el tiempo restante
-                            channel = bot.get_channel(giveaway['channel_id'])
-                            if channel:
-                                try:
-                                    message = await channel.fetch_message(giveaway['message_id'])
-                                    embed = message.embeds[0]
-                                    
-                                    # Formatear el tiempo restante
-                                    hours = int(time_left.total_seconds() // 3600)
-                                    minutes = int((time_left.total_seconds() % 3600) // 60)
-                                    seconds = int(time_left.total_seconds() % 60)
-                                    
-                                    if hours > 0:
-                                        time_str = f'{hours}h {minutes}m {seconds}s'
-                                    elif minutes > 0:
-                                        time_str = f'{minutes}m {seconds}s'
-                                    else:
-                                        time_str = f'{seconds}s'
-                                    
-                                    # Actualizar el campo de tiempo
-                                    for i, field in enumerate(embed.fields):
-                                        if field.name == '⏰ Tiempo restante' or field.name == '⏰ Termina en':
-                                            embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                            break
-                                    
-                                    await message.edit(embed=embed)
-                                    print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
-                                except:
-                                    pass  # Mensaje ya no existe, puede que fue eliminado
-                            
-                            # Enviar recordatorio en el canal de anuncios
-                            if giveaway_announcement_channel_id:
-                                try:
-                                    announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                                    if announcement_channel:
-                                        reminder_embed = discord.Embed(
-                                            title='🎉 ¡Sorteo en curso!',
-                                            description=f'**{giveaway["prize"]}**\n\nTiempo restante: {time_str}\n\n🎯 Participa en {channel.mention} reaccionando con 🎉',
-                                            color=0xFFD700
-                                        )
-                                        reminder_embed.add_field(name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                        reminder_embed.add_field(name='🏆 Ganadores', value=str(giveaway['winners']), inline=True)
-                                        reminder_embed.set_footer(text='¡Reacciona con 🎉 para participar!')
-                                        reminder_embed.set_thumbnail(url=bot.user.display_avatar.url)
-                                        
-                                        # Enviar mensaje con @everyone
-                                        reminder_message = await announcement_channel.send(content='@everyone', embed=reminder_embed)
-                                        
-                                        # Guardar el ID del mensaje para eliminarlo después
-                                        if 'announcement_messages' not in giveaway:
-                                            giveaway['announcement_messages'] = []
-                                        giveaway['announcement_messages'].append(reminder_message.id)
-                                        data['giveaways'][giveaway_id] = giveaway
-                                        save_data()
-                                        
-                                        print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
-                                except Exception as e:
-                                    print(f'[Sorteo] Error al enviar recordatorio: {e}')
-                    except Exception as e:
-                        logger.error(f'Error en actualización: {e}')
-        except Exception as e:
-            logger.error(f'Error general en actualización de temporizadores: {e}')
 
 # Actualizar ranking
 async def update_ranking(guild_id=None):
@@ -1215,7 +1052,7 @@ async def on_member_join(member):
                         description=f'{member.mention}, por favor reacciona al mensaje de verificación para obtener acceso completo al servidor.',
                         color=0xFF6B6B
                     )
-                    embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
+                    embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Eventos\n✅ Acceso completo', inline=False)
                     embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ en este canal', inline=False)
                     embed.set_footer(text='Sistema de verificación automática')
                     
@@ -1357,126 +1194,6 @@ async def on_raw_reaction_add(payload):
                 logger.warning(f'Error de permisos en servidor {guild.name}')
             except Exception as e:
                 logger.error(f'Error: {e}')
-
-# Evento de reacción removida para roles reaccionables
-@bot.event
-async def on_raw_reaction_remove(payload):
-    # Roles Reaccionables
-    server_id = str(payload.guild_id)
-    if 'servers' in data and server_id in data['servers'] and 'reaction_roles' in data['servers'][server_id]:
-        panel_message_id = data['servers'][server_id]['reaction_roles'].get('panel_message_id')
-        reaction_roles = data['servers'][server_id]['reaction_roles'].get('roles', {})
-
-        if payload.message_id == panel_message_id and str(payload.emoji) in reaction_roles:
-            try:
-                guild = bot.get_guild(payload.guild_id)
-                member = guild.get_member(payload.user_id)
-
-                if member and not member.bot:
-                    role_id = reaction_roles[str(payload.emoji)]['role_id']
-                    role = guild.get_role(role_id)
-
-                    if role and role in member.roles:
-                        # Quitar el rol
-                        await member.remove_roles(role)
-                        logger.info(f'Rol {role.name} quitado de {member.name} (reacción removida) en servidor {guild.name}')
-            except discord.errors.Forbidden:
-                logger.warning(f'Error de permisos en servidor {guild.name}')
-            except Exception as e:
-                logger.error(f'Error: {e}')
-    
-    # Sorteos (verificar en todos los servidores)
-    if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
-        if str(payload.message_id) in data['servers'][server_id]['giveaways']:
-            try:
-                giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
-                
-                if str(payload.emoji) == '🎉':
-                    guild = bot.get_guild(payload.guild_id)
-                    member = guild.get_member(payload.user_id)
-                    
-                    if member and not member.bot:
-                        user_id = str(member.id)
-                        
-                        if user_id in giveaway['participants']:
-                            giveaway['participants'].remove(user_id)
-                            data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
-                            
-                            # Actualizar embed y guardar datos en paralelo
-                            try:
-                                channel = bot.get_channel(giveaway['channel_id'])
-                                if channel:
-                                    message = await channel.fetch_message(int(giveaway['message_id']))
-                                    embed = message.embeds[0]
-                                    
-                                    # Actualizar el campo de participantes
-                                    for i, field in enumerate(embed.fields):
-                                        if field.name == '👥 Participantes':
-                                            embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                            break
-                                    
-                                    # Guardar datos y actualizar embed en paralelo
-                                    await asyncio.gather(
-                                        message.edit(embed=embed),
-                                        save_data_async()
-                                    )
-                                    logger.debug(f'Contador actualizado: {len(giveaway["participants"])} participantes')
-                            except Exception as e:
-                                logger.error(f'Error al actualizar embed: {e}')
-                                save_data()
-                            
-                            logger.info(f'{member.name} salió del sorteo {giveaway["prize"]}')
-            except Exception as e:
-                logger.error(f'Error en sorteo: {e}')
-
-    # Sorteos (verificar en todos los servidores)
-    server_id = str(payload.guild_id)
-    
-    if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
-        if str(payload.message_id) in data['servers'][server_id]['giveaways']:
-            try:
-                giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
-                
-                if str(payload.emoji) == '🎉':
-                    guild = bot.get_guild(payload.guild_id)
-                    member = guild.get_member(payload.user_id)
-                    
-                    if member and not member.bot:
-                        user_id = str(member.id)
-                        
-                        if user_id not in giveaway['participants']:
-                            giveaway['participants'].append(user_id)
-                            data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
-                            
-                            # Actualizar embed y guardar datos en paralelo para mayor velocidad
-                            try:
-                                channel = bot.get_channel(giveaway['channel_id'])
-                                if channel:
-                                    message = await channel.fetch_message(int(giveaway['message_id']))
-                                    embed = message.embeds[0]
-                                    
-                                    # Actualizar el campo de participantes directamente sin búsqueda
-                                    for i, field in enumerate(embed.fields):
-                                        if field.name == '👥 Participantes':
-                                            embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                            break
-                                    
-                                    # Guardar datos y actualizar embed en paralelo
-                                    await asyncio.gather(
-                                        message.edit(embed=embed),
-                                        save_data_async()
-                                    )
-                                    logger.debug(f'Contador actualizado: {len(giveaway["participants"])} participantes')
-                            except Exception as e:
-                                logger.error(f'Error al actualizar embed: {e}')
-                                # Fallback: guardar datos sí o sí
-                                save_data()
-                            
-                            logger.info(f'{member.name} se unió al sorteo {giveaway["prize"]}')
-                        else:
-                            logger.debug(f'{member.name} ya participó en el sorteo')
-            except Exception as e:
-                logger.error(f'Error en sorteo: {e}')
 
 # Evento miembro salió
 @bot.event
@@ -2089,7 +1806,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role', inline=False)
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
-            embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
+
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='🎫 Tickets', value='/close, /config_tickets, /send_ticket_panel, /delete_ticket_button', inline=False)
@@ -2108,8 +1825,6 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel - Crea un panel de roles\n/add_reaction_role - Agrega un rol reaccionable\n/remove_reaction_role - Elimina un rol reaccionable', inline=False)
         elif category == 'verificacion':
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/create_verification_message - Configura rol/canal y crea el mensaje\n/manual_verify - Verifica manualmente a un usuario', inline=False)
-        elif category == 'sorteos':
-            embed.add_field(name='🎉 Sorteos', value='/create_giveaway - Crea un sorteo\n/end_giveaway - Finaliza un sorteo\n/list_giveaways - Lista los sorteos activos\n/reroll_giveaway - Vuelve a elegir un ganador\n/config_giveaway_channel - Configura el canal de sorteos\n/config_announce_channel - Configura el canal de anuncios', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -2155,11 +1870,6 @@ class HelpView(discord.ui.View):
     @discord.ui.button(label='🔒 Verificación', style=discord.ButtonStyle.primary)
     async def verificacion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = self.create_embed('verificacion')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🎉 Sorteos', style=discord.ButtonStyle.primary)
-    async def sorteos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('sorteos')
         await interaction.response.edit_message(embed=embed, view=self)
     
     @discord.ui.button(label='🔔 Notificaciones', style=discord.ButtonStyle.primary)
@@ -3254,7 +2964,7 @@ async def create_verification_message(interaction: discord.Interaction, role: di
             color=0xFF6B6B
         )
 
-        embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
+        embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Eventos\n✅ Acceso completo', inline=False)
         embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ para obtener acceso', inline=False)
         embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
         embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
@@ -3503,350 +3213,6 @@ class RemoveLevelRoleModal(discord.ui.Modal, title='Eliminar Rol por Nivel'):
 
 
 
-# Comandos individuales de sorteos
-@bot.tree.command(name='config_giveaway_channel', description='Configura el canal para sorteos')
-@discord.app_commands.describe(channel='Canal para sorteos')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_giveaway_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    set_server_setting(interaction.guild.id, 'giveaway_channel', channel.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}', ephemeral=True)
-    print(f'[Config] Canal de sorteos configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
-
-@bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos')
-@discord.app_commands.describe(channel='Canal para anuncios de sorteos')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_announce_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Canal de anuncios de sorteos configurado: {channel.mention}', ephemeral=True)
-    print(f'[Config] Canal de anuncios configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
-
-@bot.tree.command(name='create_giveaway', description='Crea un nuevo sorteo')
-@discord.app_commands.describe(
-    prize='Premio del sorteo',
-    duration='Duración en minutos',
-    winners='Cantidad de ganadores'
-)
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def create_giveaway(interaction: discord.Interaction, prize: str, duration: int, winners: int = 1):
-    server_id = str(interaction.guild.id)
-    giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel')
-    giveaway_announcement_channel_id = get_server_setting(interaction.guild.id, 'giveaway_announcement_channel')
-    
-    if not giveaway_channel_id:
-        await interaction.response.send_message('❌ Primero configura el canal de sorteos con /config_giveaway_channel', ephemeral=True)
-        return
-    
-    channel = bot.get_channel(giveaway_channel_id)
-    if not channel:
-        await interaction.response.send_message('❌ Canal de sorteos no encontrado', ephemeral=True)
-        return
-    
-    # Defer la respuesta para evitar timeout
-    await interaction.response.defer()
-    
-    try:
-        # Inicializar estructura de sorteos del servidor
-        if 'servers' not in data:
-            data['servers'] = {}
-        if server_id not in data['servers']:
-            data['servers'][server_id] = {}
-        if 'giveaways' not in data['servers'][server_id]:
-            data['servers'][server_id]['giveaways'] = {}
-        
-        # Calcular fecha de finalización
-        end_time = datetime.now() + timedelta(minutes=duration)
-        
-        # Crear embed del sorteo
-        embed = discord.Embed(
-            title='🎉 ¡SORTEO!',
-            description=f'**Premio:** {prize}\n\nReacciona con 🎉 para participar',
-            color=0xFFD700
-        )
-        
-        embed.add_field(name='🏆 Ganadores', value=str(winners), inline=True)
-        embed.add_field(name='⏰ Tiempo restante', value=f'{duration} minutos', inline=True)
-        embed.add_field(name='👥 Participantes', value='0', inline=True)
-        embed.add_field(name='📅 Finaliza', value=end_time.strftime('%d/%m/%Y %H:%M'), inline=False)
-        embed.set_footer(text=f'Organizado por {interaction.user.name}')
-        embed.set_thumbnail(url=bot.user.display_avatar.url)
-        
-        # Enviar mensaje del sorteo
-        message = await channel.send(embed=embed)
-        await message.add_reaction('🎉')
-        
-        # Guardar sorteo en el servidor específico
-        giveaway_id = str(message.id)
-        data['servers'][server_id]['giveaways'][giveaway_id] = {
-            'prize': prize,
-            'end_time': end_time.isoformat(),
-            'winners': winners,
-            'participants': [],
-            'organizer': str(interaction.user.id),
-            'channel_id': channel.id,
-            'message_id': str(message.id),  # Guardar como string para consistencia
-            'announcement_messages': []  # Guardar IDs de mensajes de anuncios
-        }
-        save_data()
-        
-        await interaction.followup.send(f'✅ Sorteo creado en {channel.mention}. Terminará a las {end_time.strftime("%H:%M")}')
-        
-        # Enviar notificación al canal de anuncios si está configurado
-        if giveaway_announcement_channel_id:
-            try:
-                announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                if announcement_channel:
-                    announcement_embed = discord.Embed(
-                        title='🎉 ¡Nuevo Sorteo Creado!',
-                        description=f'{interaction.user.mention} ha iniciado un nuevo sorteo de **{prize}**',
-                        color=0xFFD700
-                    )
-                    announcement_embed.add_field(name='🎁 Premio', value=prize, inline=True)
-                    announcement_embed.add_field(name='⏰ Duración', value=f'{duration} minutos', inline=True)
-                    announcement_embed.add_field(name='👥 Ganadores', value=str(winners), inline=True)
-                    announcement_embed.add_field(name='📁 Canal', value=channel.mention, inline=False)
-                    announcement_embed.add_field(name='🎯 Cómo participar', value=f'Reacciona con 🎉 en {channel.mention}', inline=False)
-                    announcement_embed.set_footer(text=f'Organizado por {interaction.user.name}')
-                    announcement_embed.set_thumbnail(url=bot.user.display_avatar.url)
-                    
-                    await announcement_channel.send(embed=announcement_embed)
-                    print(f'[Sorteo] Anuncio enviado al canal de anuncios')
-            except Exception as e:
-                print(f'[Sorteo] Error al enviar anuncio: {e}')
-        
-        # Iniciar tarea para finalizar sorteo
-        bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60, server_id))
-        
-    except Exception as e:
-        logger.error(f'Error al crear sorteo: {e}')
-        await interaction.followup.send(f'❌ Error al crear sorteo: {e}', ephemeral=True)
-
-async def end_giveaway_after_delay(giveaway_id, delay, server_id=None):
-    await asyncio.sleep(delay)
-    await end_giveaway(giveaway_id, server_id)
-
-async def end_giveaway(giveaway_id, server_id=None):
-    # Buscar el sorteo en el servidor específico
-    giveaway = None
-    
-    if server_id and 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
-        if giveaway_id in data['servers'][server_id]['giveaways']:
-            giveaway = data['servers'][server_id]['giveaways'][giveaway_id]
-    
-    if not giveaway:
-        return
-    
-    try:
-        channel = bot.get_channel(giveaway['channel_id'])
-        if not channel:
-            # Eliminar el sorteo si el canal no existe
-            if server_id:
-                del data['servers'][server_id]['giveaways'][giveaway_id]
-            save_data()
-            return
-        
-        try:
-            message = await channel.fetch_message(int(giveaway['message_id']))
-        except discord.NotFound:
-            # El mensaje fue eliminado, eliminar el sorteo de la base de datos
-            logger.warning(f'Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
-            if server_id:
-                del data['servers'][server_id]['giveaways'][giveaway_id]
-            save_data()
-            return
-        
-        if not giveaway['participants']:
-            # Actualizar embed mostrando que no hubo participantes
-            embed = message.embeds[0]
-            embed.description = f'**Premio:** {giveaway["prize"]}\n\n**❌ SORTEO CANCELADO - No hubo participantes**'
-            embed.color = 0xE74C3C
-            embed.set_field_at(1, name='⏰ Tiempo restante', value='Finalizado', inline=True)
-            embed.set_field_at(2, name='👥 Participantes', value='0', inline=True)
-            await message.edit(embed=embed)
-            
-            # Eliminar del servidor
-            if server_id:
-                del data['servers'][server_id]['giveaways'][giveaway_id]
-            save_data()
-            return
-        
-        # Elegir ganadores
-        import random
-        winners_count = min(giveaway['winners'], len(giveaway['participants']))
-        winner_ids = random.sample(giveaway['participants'], winners_count)
-        
-        # Actualizar embed del mensaje original con los ganadores
-        embed = message.embeds[0]
-        embed.description = f'**Premio:** {giveaway["prize"]}\n\n**🎉 ¡SORTEO FINALIZADO!**'
-        embed.color = 0x2ecc71  # Verde para indicar éxito
-        embed.set_field_at(1, name='⏰ Tiempo restante', value='Finalizado', inline=True)
-        embed.set_field_at(2, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-        
-        winners_mentions = []
-        winners_names = []
-        for winner_id in winner_ids:
-            try:
-                winner = await bot.fetch_user(int(winner_id))
-                winners_mentions.append(winner.mention)
-                winners_names.append(winner.name)
-            except:
-                pass
-        
-        if winners_mentions:
-            # Agregar campo de ganadores al embed
-            embed.add_field(name=f'🏆 Ganador{"es" if len(winners_mentions) > 1 else ""} ({len(winners_mentions)})', 
-                          value=', '.join(winners_mentions), inline=False)
-            
-            await message.edit(embed=embed)
-            
-            # Enviar mensaje adicional en el canal
-            await channel.send(f'🎉 ¡Felicidades {", ".join(winners_mentions)} ganaron el sorteo de **{giveaway["prize"]}**!')
-            
-            # Enviar mensaje privado a cada ganador
-            for winner_id in winner_ids:
-                try:
-                    winner = await bot.fetch_user(int(winner_id))
-                    dm_embed = discord.Embed(
-                        title='🎉 ¡Felicidades! ¡Has ganado un sorteo!',
-                        description=f'Has ganado el sorteo de **{giveaway["prize"]}**!\n\nPor favor contacta al administrador para reclamar tu premio.',
-                        color=0xFFD700
-                    )
-                    dm_embed.add_field(name='🎁 Premio', value=giveaway['prize'], inline=True)
-                    dm_embed.add_field(name='📁 Servidor', value=channel.guild.name, inline=True)
-                    dm_embed.set_footer(text='¡Felicidades por tu premio!')
-                    dm_embed.set_thumbnail(url=bot.user.display_avatar.url)
-                    
-                    await winner.send(embed=dm_embed)
-                    print(f'[Sorteo] Mensaje enviado a {winner.name}')
-                except Exception as e:
-                    print(f'[Sorteo] Error al enviar DM a {winner_id}: {e}')
-            
-            # Enviar notificación al canal de notificaciones
-            await send_notification(
-                guild=channel.guild,
-                notification_type='giveaways',
-                message=f'¡Ganadores del sorteo **{giveaway["prize"]}**: {", ".join(winners_mentions)}',
-                color=0xFFD700
-            )
-        else:
-            embed.add_field(name='🏆 Ganadores', value='No se pudieron determinar', inline=False)
-            await message.edit(embed=embed)
-        
-        # Eliminar mensajes de anuncios del canal de anuncios
-        giveaway_announcement_channel_id = get_server_setting(channel.guild.id, 'giveaway_announcement_channel')
-        if giveaway_announcement_channel_id and 'announcement_messages' in giveaway:
-            try:
-                announcement_channel = bot.get_channel(giveaway_announcement_channel_id)
-                if announcement_channel:
-                    for message_id in giveaway['announcement_messages']:
-                        try:
-                            message = await announcement_channel.fetch_message(int(message_id))
-                            await message.delete()
-                            logger.info(f'Mensaje de anuncio eliminado: {message_id}')
-                        except:
-                            pass  # Mensaje ya no existe
-            except Exception as e:
-                logger.error(f'Error al eliminar mensajes de anuncio: {e}')
-        
-        # Eliminar sorteo de la lista
-        if server_id:
-            del data['servers'][server_id]['giveaways'][giveaway_id]
-        save_data()
-        
-        print(f'[Sorteo] Sorteo "{giveaway["prize"]}" finalizado. Ganadores: {len(winners_mentions)}')
-        
-    except Exception as e:
-        logger.error(f'Error al finalizar sorteo: {e}')
-
-@bot.tree.command(name='end_giveaway', description='Finaliza manualmente un sorteo')
-@discord.app_commands.describe(message_id='ID del mensaje del sorteo')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def end_giveaway_command(interaction: discord.Interaction, message_id: str):
-    try:
-        message_id_int = int(message_id)
-        server_id = str(interaction.guild.id)
-        
-        # Buscar en el servidor específico
-        found = False
-        if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
-            if str(message_id_int) in data['servers'][server_id]['giveaways']:
-                await end_giveaway(str(message_id_int), server_id)
-                found = True
-        
-        if found:
-            await interaction.response.send_message('✅ Sorteo finalizado manualmente')
-        else:
-            await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
-    except ValueError:
-        await interaction.response.send_message('❌ ID de mensaje inválido', ephemeral=True)
-
-@bot.tree.command(name='list_giveaways', description='Lista los sorteos activos')
-async def list_giveaways(interaction: discord.Interaction):
-    server_id = str(interaction.guild.id)
-    
-    if 'servers' not in data or server_id not in data['servers'] or 'giveaways' not in data['servers'][server_id]:
-        await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
-        return
-    
-    server_giveaways = data['servers'][server_id]['giveaways']
-    
-    if not server_giveaways:
-        await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
-        return
-    
-    embed = discord.Embed(
-        title='🎉 Sorteos Activos',
-        color=0xFFD700
-    )
-    
-    for giveaway_id, giveaway in server_giveaways.items():
-        end_time = datetime.fromisoformat(giveaway['end_time'])
-        time_left = end_time - datetime.now()
-        
-        embed.add_field(
-            name=f'🎁 {giveaway["prize"]}',
-            value=f'Participantes: {len(giveaway["participants"])} | Termina en: {time_left}',
-            inline=False
-        )
-    
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name='reroll_giveaway', description='Vuelve a elegir ganadores de un sorteo terminado')
-@discord.app_commands.describe(message_id='ID del mensaje del sorteo terminado')
-async def reroll_giveaway(interaction: discord.Interaction, message_id: str):
-    try:
-        message_id_int = int(message_id)
-        giveaway_channel_id = get_server_setting(interaction.guild.id, 'giveaway_channel')
-        channel = bot.get_channel(giveaway_channel_id)
-        if not channel:
-            await interaction.response.send_message('❌ Canal de sorteos no configurado', ephemeral=True)
-            return
-        
-        message = await channel.fetch_message(message_id_int)
-        
-        # Buscar participantes antiguos (guardados en embed o metadata)
-        participants = []
-        for reaction in message.reactions:
-            if str(reaction.emoji) == '🎉':
-                async for user in reaction.users():
-                    if not user.bot:
-                        participants.append(str(user.id))
-        
-        if not participants:
-            await interaction.response.send_message('❌ No hay participantes para reroll', ephemeral=True)
-            return
-        
-        import random
-        winner_id = random.choice(participants)
-        winner = await bot.fetch_user(int(winner_id))
-        
-        await channel.send(f'🎉 ¡Nuevo ganador del sorteo: {winner.mention}!')
-        await interaction.response.send_message(f'✅ Nuevo ganador elegido: {winner.mention}')
-        
-    except Exception as e:
-        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
-
 @bot.tree.command(name='test_log', description='Prueba el sistema de logs')
 async def test_log(interaction: discord.Interaction):
     await send_log(
@@ -3879,7 +3245,7 @@ async def config_notifications_channel(interaction: discord.Interaction, channel
 )
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_notification_role(interaction: discord.Interaction, notification_type: str, role: discord.Role):
-    valid_types = ['streams', 'giveaways', 'announcements', 'events']
+    valid_types = ['streams', 'announcements', 'events']
     
     if notification_type not in valid_types:
         await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
@@ -3901,7 +3267,7 @@ async def config_notification_role(interaction: discord.Interaction, notificatio
     notification_type='Tipo de notificación'
 )
 async def subscribe(interaction: discord.Interaction, notification_type: str):
-    valid_types = ['streams', 'giveaways', 'announcements', 'events']
+    valid_types = ['streams', 'announcements', 'events']
     
     if notification_type not in valid_types:
         await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
@@ -3942,7 +3308,7 @@ async def subscribe(interaction: discord.Interaction, notification_type: str):
     notification_type='Tipo de notificación'
 )
 async def unsubscribe(interaction: discord.Interaction, notification_type: str):
-    valid_types = ['streams', 'giveaways', 'announcements', 'events']
+    valid_types = ['streams', 'announcements', 'events']
     
     if notification_type not in valid_types:
         await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
@@ -3981,7 +3347,7 @@ async def my_subscriptions(interaction: discord.Interaction):
     server_id = str(interaction.guild.id)
     notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', {})
     
-    valid_types = ['streams', 'giveaways', 'announcements', 'events']
+    valid_types = ['streams', 'announcements', 'events']
     
     # Inicializar estructura de notificaciones por servidor si no existe
     if 'servers' not in data:
@@ -4402,81 +3768,6 @@ async def on_command_error(interaction: discord.Interaction, error: discord.app_
             pass
         except Exception as e:
             print(f'[Error Global] Error al responder sobre error general: {e}')
-
-# Tarea para actualizar el tiempo restante de los sorteos cada minuto
-async def update_giveaway_timers():
-    while True:
-        await asyncio.sleep(60)  # Actualizar cada minuto
-        
-        if 'servers' not in data:
-            continue
-        
-        for server_id, server_data in data['servers'].items():
-            if 'giveaways' not in server_data:
-                continue
-            
-            # Crear una copia de los sorteos para evitar error de iteración
-            giveaways_to_remove = []
-            
-            for giveaway_id, giveaway in list(server_data['giveaways'].items()):
-                try:
-                    end_time = datetime.fromisoformat(giveaway['end_time'])
-                    time_left = end_time - datetime.now()
-                    
-                    if time_left.total_seconds() > 0:
-                        # Calcular tiempo restante en formato legible
-                        total_seconds = int(time_left.total_seconds())
-                        days = total_seconds // 86400
-                        hours = (total_seconds % 86400) // 3600
-                        minutes = (total_seconds % 3600) // 60
-                        
-                        if days > 0:
-                            time_str = f"{days}d {hours}h {minutes}m"
-                        elif hours > 0:
-                            time_str = f"{hours}h {minutes}m"
-                        elif minutes > 0:
-                            time_str = f"{minutes}m"
-                        else:
-                            time_str = "Menos de 1m"
-                        
-                        # Actualizar el embed del sorteo
-                        channel = bot.get_channel(giveaway['channel_id'])
-                        if channel:
-                            try:
-                                message = await channel.fetch_message(giveaway['message_id'])
-                                embed = message.embeds[0]
-                                
-                                # Actualizar contador de participantes basado en reacciones actuales
-                                participants_count = 0
-                                for reaction in message.reactions:
-                                    if str(reaction.emoji) == '🎉':
-                                        participants_count = reaction.count - 1  # Restar 1 por la reacción del bot
-                                        break
-                                
-                                # Actualizar el campo de tiempo restante
-                                for i, field in enumerate(embed.fields):
-                                    if field.name == '⏰ Tiempo restante':
-                                        embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
-                                    elif field.name == '👥 Participantes':
-                                        embed.set_field_at(i, name='👥 Participantes', value=str(participants_count), inline=True)
-                                
-                                await message.edit(embed=embed)
-                                print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante, {participants_count} participantes')
-                            except discord.NotFound:
-                                # El mensaje fue eliminado, marcar para eliminar
-                                print(f'[Sorteo] Mensaje eliminado, marcando sorteo {giveaway_id} para eliminar')
-                                giveaways_to_remove.append(giveaway_id)
-                            except Exception as e:
-                                print(f'[Sorteo] Error al actualizar tiempo: {e}')
-                except Exception as e:
-                    print(f'[Sorteo] Error al procesar sorteo {giveaway_id}: {e}')
-            
-            # Eliminar sorteos marcados después de la iteración
-            for giveaway_id in giveaways_to_remove:
-                if giveaway_id in data['servers'][server_id]['giveaways']:
-                    del data['servers'][server_id]['giveaways'][giveaway_id]
-                    save_data()
-                    print(f'[Sorteo] Sorteo {giveaway_id} eliminado de la base de datos')
 
 # Servidor web Flask para SparkedHost
 app = Flask(__name__)
