@@ -2765,7 +2765,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
-            embed.add_field(name='🎫 Tickets', value='/ticket_panel, /ticket_config, /ticket_category, /ticket_add, /ticket_remove, /ticket_rename, /ticket_info, /ticket_close, /ticket_claim', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_create_config, /ticket_send', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
@@ -2786,7 +2786,7 @@ class HelpView(discord.ui.View):
         elif category == 'sorteos':
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create - Crea un nuevo sorteo\n/giveaway_end - Finaliza un sorteo manualmente\n/giveaway_reroll - Selecciona nuevo ganador\n/giveaway_list - Muestra sorteos activos\n/giveaway_config - Configura el sistema de sorteos', inline=False)
         elif category == 'tickets':
-            embed.add_field(name='🎫 Tickets', value='/ticket_panel - Envía el panel de tickets\n/ticket_config - Configura el sistema de tickets\n/ticket_category - Gestiona categorías de tickets\n/ticket_add - Agrega usuario a ticket\n/ticket_remove - Elimina usuario de ticket\n/ticket_rename - Renombra un ticket\n/ticket_info - Muestra información del ticket\n/ticket_close - Cierra el ticket actual\n/ticket_claim - Reclama el ticket actual', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal actual', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -3344,6 +3344,171 @@ async def ticket_claim(interaction: discord.Interaction):
         await interaction.response.send_message('✅ Ticket reclamado', ephemeral=True)
     else:
         await interaction.response.send_message(f'❌ {result["reason"]}', ephemeral=True)
+
+# ==================== SISTEMA DE TICKETS SIMPLIFICADO ====================
+
+# Almacenamiento temporal de configuraciones de tickets
+ticket_configs = {}
+
+class TicketConfigModal(discord.ui.Modal, title='Configurar Ticket'):
+    def __init__(self):
+        super().__init__()
+
+    title_input = discord.ui.TextInput(
+        label='Título del panel',
+        placeholder='Ej: Sistema de Tickets',
+        default='Sistema de Tickets',
+        required=True,
+        max_length=100
+    )
+
+    description_input = discord.ui.TextInput(
+        label='Descripción',
+        placeholder='Ej: Selecciona una opción para crear un ticket',
+        default='Selecciona una opción para crear un ticket',
+        required=True,
+        max_length=500,
+        style=discord.TextStyle.long
+    )
+
+    button1_label = discord.ui.TextInput(
+        label='Botón 1',
+        placeholder='Ej: Report',
+        default='Report',
+        required=True,
+        max_length=50
+    )
+
+    button2_label = discord.ui.TextInput(
+        label='Botón 2',
+        placeholder='Ej: Pregunta',
+        default='Pregunta',
+        required=False,
+        max_length=50
+    )
+
+    button3_label = discord.ui.TextInput(
+        label='Botón 3',
+        placeholder='Ej: Postulación',
+        default='Postulación',
+        required=False,
+        max_length=50
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Guardar configuración temporal
+        server_id = str(interaction.guild.id)
+        ticket_configs[server_id] = {
+            'title': self.title_input.value,
+            'description': self.description_input.value,
+            'buttons': [
+                self.button1_label.value,
+                self.button2_label.value if self.button2_label.value else None,
+                self.button3_label.value if self.button3_label.value else None
+            ]
+        }
+
+        await interaction.response.send_message('✅ Configuración guardada temporalmente. Usa `/ticket_send` para enviarla al canal.', ephemeral=True)
+
+class TicketPanelView(discord.ui.View):
+    """Vista del panel de tickets con botones personalizados"""
+    def __init__(self, config):
+        super().__init__(timeout=None)
+        self.config = config
+
+        # Agregar botones dinámicamente
+        for i, button_label in enumerate(config['buttons']):
+            if button_label:
+                style = discord.ButtonStyle.primary if i == 0 else discord.ButtonStyle.secondary
+                button = discord.ui.Button(label=button_label, style=style, custom_id=f'ticket_{i}')
+                button.callback = self.create_button_callback(button_label)
+                self.add_item(button)
+
+    def create_button_callback(self, button_label):
+        async def callback(interaction: discord.Interaction):
+            # Crear ticket
+            server_id = str(interaction.guild.id)
+            channel_name = f'ticket-{interaction.user.name}'.lower().replace(' ', '-')
+
+            try:
+                # Crear canal privado
+                overwrites = {
+                    interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False, view_channel=False),
+                    interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
+                    interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
+                }
+
+                category = interaction.guild.get_channel(get_server_setting(interaction.guild.id, 'ticket_category'))
+                ticket_channel = await interaction.guild.create_text_channel(
+                    name=channel_name,
+                    category=category,
+                    overwrites=overwrites,
+                    reason=f'Ticket creado por {interaction.user.name}'
+                )
+
+                # Enviar mensaje de bienvenida
+                embed = discord.Embed(
+                    title=f'🎫 Ticket: {button_label}',
+                    description=f'Hola {interaction.user.mention}.\n\nGracias por contactar con soporte.\nUn miembro del equipo te atenderá lo antes posible.',
+                    color=0x3498db
+                )
+                embed.add_field(name='Tipo', value=button_label, inline=True)
+                embed.add_field(name='Usuario', value=interaction.user.mention, inline=True)
+                embed.set_footer(text=f'Creado el {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+
+                await ticket_channel.send(content=interaction.user.mention, embed=embed)
+
+                await interaction.response.send_message(f'✅ Ticket creado: {ticket_channel.mention}', ephemeral=True)
+                logger.info(f'Ticket creado: {button_label} por {interaction.user.name}')
+
+            except Exception as e:
+                logger.error(f'Error al crear ticket: {e}')
+                await interaction.response.send_message(f'❌ Error al crear ticket: {e}', ephemeral=True)
+
+        return callback
+
+@bot.tree.command(name='ticket_channel', description='Configura el canal donde se crearán los tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+@discord.app_commands.describe(category='Categoría de Discord donde se crearán los tickets')
+async def ticket_channel(interaction: discord.Interaction, category: discord.CategoryChannel):
+    set_server_setting(interaction.guild.id, 'ticket_category', category.id)
+    save_data()
+
+    await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.mention}', ephemeral=True)
+    logger.info(f'Categoría de tickets configurada: {category.name} por {interaction.user.name}')
+
+@bot.tree.command(name='ticket_create_config', description='Crea una configuración para el panel de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def ticket_create_config(interaction: discord.Interaction):
+    await interaction.response.send_modal(TicketConfigModal())
+
+@bot.tree.command(name='ticket_send', description='Envía el panel de tickets al canal actual')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def ticket_send(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+
+    if server_id not in ticket_configs:
+        await interaction.response.send_message('❌ No hay configuración guardada. Usa `/ticket_create_config` primero.', ephemeral=True)
+        return
+
+    config = ticket_configs[server_id]
+
+    # Crear embed
+    embed = discord.Embed(
+        title=config['title'],
+        description=config['description'],
+        color=0x3498db
+    )
+
+    embed.add_field(name='⚠️ Advertencia', value='No abuses del sistema de tickets. El mal uso puede resultar en sanciones.', inline=False)
+    embed.set_footer(text='Sistema de Tickets')
+
+    # Crear vista con botones
+    view = TicketPanelView(config)
+
+    await interaction.response.send_message(embed=embed, view=view)
+
+    logger.info(f'Panel de tickets enviado por {interaction.user.name}')
 
 # ==================== COMANDOS DE SORTEOS ====================
 
