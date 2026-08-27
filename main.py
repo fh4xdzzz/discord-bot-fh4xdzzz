@@ -2929,7 +2929,19 @@ async def ticket_panel(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 @discord.app_commands.describe(
     setting='Configuración a modificar',
-    value='Nuevo valor'
+    value='Nuevo valor (opcional para mostrar valor actual)'
+)
+@discord.app_commands.choices(
+    setting=[
+        discord.app_commands.Choice(name='panel_channel', value='panel_channel'),
+        discord.app_commands.Choice(name='category', value='category'),
+        discord.app_commands.Choice(name='support_role', value='support_role'),
+        discord.app_commands.Choice(name='admin_role', value='admin_role'),
+        discord.app_commands.Choice(name='log_channel', value='log_channel'),
+        discord.app_commands.Choice(name='max_tickets_per_user', value='max_tickets_per_user'),
+        discord.app_commands.Choice(name='panel_message', value='panel_message'),
+        discord.app_commands.Choice(name='ticket_format', value='ticket_format')
+    ]
 )
 async def ticket_config(interaction: discord.Interaction, setting: str, value: str = None):
     server_id = str(interaction.guild.id)
@@ -2946,8 +2958,26 @@ async def ticket_config(interaction: discord.Interaction, setting: str, value: s
         'ticket_format': 'Formato del nombre del ticket'
     }
     
-    if setting not in valid_settings:
-        await interaction.response.send_message(f'❌ Configuración inválida. Opciones: {", ".join(valid_settings.keys())}', ephemeral=True)
+    # Si no se proporciona valor, mostrar el valor actual
+    if value is None:
+        current_value = config.get(setting, 'No configurado')
+        
+        # Formatear el valor actual según el tipo
+        if setting in ['panel_channel', 'category', 'log_channel']:
+            if current_value and current_value != 'No configurado':
+                channel = bot.get_channel(current_value)
+                current_value = channel.mention if channel else 'Canal no encontrado'
+        elif setting in ['support_role', 'admin_role']:
+            if current_value and current_value != 'No configurado':
+                role = interaction.guild.get_role(current_value)
+                current_value = role.mention if role else 'Rol no encontrado'
+        
+        embed = discord.Embed(
+            title=f'⚙️ {valid_settings[setting]}',
+            description=f'Valor actual: {current_value}',
+            color=0x3498db
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
     # Procesar el valor según el tipo
