@@ -1987,7 +1987,7 @@ async def ayuda(interaction: discord.Interaction):
     embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
     embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
     embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
-    embed.add_field(name='🎫 Tickets', value='/ticket, /close, /config_ticket_category, /send_ticket_panel, /delete_ticket_button', inline=False)
+    embed.add_field(name='🎫 Tickets', value='/close, /config_ticket_category, /send_ticket_panel, /delete_ticket_button', inline=False)
     embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
     embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
     embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
@@ -3699,67 +3699,6 @@ async def send_event(interaction: discord.Interaction, event_name: str, descript
     
     await interaction.response.send_message('✅ Evento enviado al canal de notificaciones')
 
-# Tickets
-@bot.tree.command(name='ticket', description='Crea un ticket de soporte')
-async def ticket(interaction: discord.Interaction):
-    if not interaction.guild:
-        await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
-        return
-    
-    server_id = str(interaction.guild.id)
-    category_id = get_server_setting(interaction.guild.id, 'ticket_category')
-    category = bot.get_channel(category_id) if category_id else None
-    
-    # Inicializar estructura de tickets del servidor
-    if 'servers' not in data:
-        data['servers'] = {}
-    if server_id not in data['servers']:
-        data['servers'][server_id] = {}
-    if 'tickets' not in data['servers'][server_id]:
-        data['servers'][server_id]['tickets'] = {}
-    
-    ticket_num = len(data['servers'][server_id]['tickets']) + 1
-    
-    overwrites = {
-        interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False, send_messages=False),
-        interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-        interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True)
-    }
-    
-    channel = await interaction.guild.create_text_channel(
-        name=f'ticket-{ticket_num}',
-        category=category,
-        overwrites=overwrites
-    )
-    
-    data['servers'][server_id]['tickets'][str(channel.id)] = {
-        'user_id': str(interaction.user.id),
-        'created_at': datetime.now().isoformat()
-    }
-    save_data()
-    
-    # Log de ticket creado
-    await send_log(
-        guild=interaction.guild,
-        title='Ticket Creado',
-        description=f'{interaction.user.mention} ha creado un ticket de soporte',
-        color=0x3498db,
-        fields=[
-            {'name': 'Usuario', 'value': interaction.user.name, 'inline': True},
-            {'name': 'Canal', 'value': channel.mention, 'inline': True},
-            {'name': 'Fecha', 'value': datetime.now().strftime('%d/%m/%Y %H:%M'), 'inline': True}
-        ],
-        author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
-    )
-    
-    embed = discord.Embed(
-        title='🎫 Ticket de Soporte',
-        description=f'Ticket creado por {interaction.user.mention}\n\nUsa /close para cerrar este ticket.',
-        color=0x3498db
-    )
-    
-    await channel.send(embed=embed)
-    await interaction.response.send_message(f'✅ Ticket creado: {channel.mention}')
 
 @bot.tree.command(name='close', description='Cierra el ticket actual')
 async def close(interaction: discord.Interaction):
