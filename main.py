@@ -62,11 +62,9 @@ def create_default_data():
     return {
         'users': {},
         'warns': {},
-        'tickets': {},
         'banned_words': ['palabra1', 'palabra2'],
         'config': {
             'level_channel': None,
-            'ticket_category': None,
             'welcome_channel': None,
             'ranking_channel': None,
             'ranking_message_id': None,
@@ -100,7 +98,6 @@ def validate_data():
     required_keys = {
         'users': dict,
         'warns': dict,
-        'tickets': dict,
         'banned_words': list,
         'giveaways': dict,
         'config': dict,
@@ -111,7 +108,6 @@ def validate_data():
 
     required_config_keys = {
         'level_channel': (int, type(None)),
-        'ticket_category': (int, type(None)),
         'welcome_channel': (int, type(None)),
         'ranking_channel': (int, type(None)),
         'ranking_message_id': (int, type(None)),
@@ -2213,7 +2209,6 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎉 Sorteos', value='/giveaway create, /giveaway end, /giveaway reroll, /giveaway list, /giveaway config', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
-            embed.add_field(name='🎫 Tickets', value='/close, /config_tickets, /send_ticket_panel, /delete_ticket_button', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
             embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
@@ -2235,8 +2230,6 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
-        elif category == 'tickets':
-            embed.add_field(name='🎫 Tickets', value='/close - Cierra el ticket actual\n/config_tickets - Muestra configuración de tickets\n/send_ticket_panel - Envía el panel de tickets\n/delete_ticket_button - Elimina un botón del panel', inline=False)
         elif category == 'configuracion':
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel - Configura el canal de niveles\n/config_welcome_channel - Configura el canal de bienvenida\n/config_show - Muestra la configuración actual\n/config_log_channel - Configura el canal de logs', inline=False)
         elif category == 'filtro':
@@ -2293,10 +2286,6 @@ class HelpView(discord.ui.View):
         embed = self.create_embed('streams')
         await interaction.response.edit_message(embed=embed, view=self)
     
-    @discord.ui.button(label='🎫 Tickets', style=discord.ButtonStyle.primary)
-    async def tickets_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('tickets')
-        await interaction.response.edit_message(embed=embed, view=self)
     
     @discord.ui.button(label='⚙️ Configuración', style=discord.ButtonStyle.primary)
     async def configuracion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -3044,333 +3033,6 @@ async def list_reaction_roles(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='config_tickets', description='Muestra las opciones de configuración de tickets')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_tickets(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title='🎫 Configuración de Tickets',
-        description='Usa los siguientes comandos para configurar el sistema de tickets:',
-        color=0x3498db
-    )
-    
-    embed.add_field(name='📁 Categoría', value='/config_ticket_category - Configura la categoría donde se crean los tickets', inline=False)
-    embed.add_field(name='📺 Canal del Panel', value='/config_ticket_panel_channel - Configura el canal donde se envía el panel de tickets', inline=False)
-    embed.add_field(name='👥 Rol de Soporte', value='/config_ticket_support_role - Configura el rol que tiene acceso a los tickets', inline=False)
-    embed.add_field(name='📝 Mensaje de Bienvenida', value='/config_ticket_welcome_message - Configura el mensaje de bienvenida en los tickets', inline=False)
-    embed.add_field(name='🔢 Máximo de Tickets', value='/config_ticket_max - Configura el máximo de tickets por usuario', inline=False)
-    embed.add_field(name='📋 Canal de Logs', value='/config_ticket_log_channel - Configura el canal para logs de tickets', inline=False)
-    embed.add_field(name='➕ Agregar Botón', value='/add_ticket_button - Agrega un botón personalizado al panel', inline=False)
-    embed.add_field(name='🗑️ Eliminar Botón', value='/delete_ticket_button - Elimina un botón personalizado', inline=False)
-    embed.add_field(name='📤 Enviar Panel', value='/send_ticket_panel - Envía el panel de tickets al canal configurado', inline=False)
-    
-    embed.set_footer(text='Sistema de Tickets - Configuración')
-    embed.set_thumbnail(url=bot.user.display_avatar.url)
-    
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets')
-@discord.app_commands.describe(category='Categoría para tickets')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_category(interaction: discord.Interaction, category: discord.CategoryChannel):
-    set_server_setting(interaction.guild.id, 'ticket_category', category.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
-    print(f'[Config] Categoría de tickets configurada en servidor {interaction.guild.name}: {category.name} (ID: {category.id})')
-
-@bot.tree.command(name='config_ticket_panel_channel', description='Configura el canal donde se envía el panel de tickets')
-@discord.app_commands.describe(channel='Canal para el panel de tickets')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_panel_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    set_server_setting(interaction.guild.id, 'ticket_panel_channel', channel.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Canal del panel de tickets configurado: {channel.mention}', ephemeral=True)
-    print(f'[Config] Canal del panel configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
-
-@bot.tree.command(name='config_ticket_support_role', description='Configura el rol que tiene acceso a los tickets')
-@discord.app_commands.describe(role='Rol de soporte')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_support_role(interaction: discord.Interaction, role: discord.Role):
-    set_server_setting(interaction.guild.id, 'ticket_support_role', role.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Rol de soporte configurado: {role.mention}', ephemeral=True)
-    print(f'[Config] Rol de soporte configurado en servidor {interaction.guild.name}: {role.name} (ID: {role.id})')
-
-@bot.tree.command(name='config_ticket_welcome_message', description='Configura el mensaje de bienvenida en los tickets')
-@discord.app_commands.describe(message='Mensaje de bienvenida')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_welcome_message(interaction: discord.Interaction, message: str):
-    set_server_setting(interaction.guild.id, 'ticket_welcome_message', message)
-    save_data()
-    await interaction.response.send_message(f'✅ Mensaje de bienvenida configurado: {message}', ephemeral=True)
-    print(f'[Config] Mensaje de bienvenida configurado en servidor {interaction.guild.name}')
-
-@bot.tree.command(name='config_ticket_max', description='Configura el máximo de tickets por usuario')
-@discord.app_commands.describe(max='Máximo de tickets por usuario')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_max(interaction: discord.Interaction, max: int):
-    if max < 1 or max > 10:
-        await interaction.response.send_message('❌ El máximo debe estar entre 1 y 10.', ephemeral=True)
-        return
-    set_server_setting(interaction.guild.id, 'ticket_max_per_user', max)
-    save_data()
-    await interaction.response.send_message(f'✅ Máximo de tickets por usuario configurado: {max}', ephemeral=True)
-    print(f'[Config] Máximo de tickets configurado en servidor {interaction.guild.name}: {max}')
-
-@bot.tree.command(name='config_ticket_log_channel', description='Configura el canal para logs de tickets')
-@discord.app_commands.describe(channel='Canal para logs')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_ticket_log_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    set_server_setting(interaction.guild.id, 'ticket_log_channel', channel.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Canal de logs de tickets configurado: {channel.mention}', ephemeral=True)
-    print(f'[Config] Canal de logs configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
-
-@bot.tree.command(name='add_ticket_button', description='Agrega un botón personalizado al panel de tickets')
-@discord.app_commands.describe(
-    label='Etiqueta del botón',
-    emoji='Emoji del botón',
-    message='Mensaje de bienvenida para este tipo de ticket',
-    style='Estilo del botón (primary, secondary, success, danger)'
-)
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def add_ticket_button(interaction: discord.Interaction, label: str, emoji: str = '🎫', message: str = '', style: str = 'primary'):
-    valid_styles = ['primary', 'secondary', 'success', 'danger']
-    if style not in valid_styles:
-        await interaction.response.send_message(f'❌ Estilo inválido. Usa: {", ".join(valid_styles)}', ephemeral=True)
-        return
-    
-    custom_buttons = get_server_setting(interaction.guild.id, 'ticket_custom_buttons', [])
-    
-    button_id = f'ticket_btn_{len(custom_buttons) + 1}'
-    button_data = {
-        'id': button_id,
-        'label': label,
-        'emoji': emoji,
-        'message': message,
-        'style': style
-    }
-    
-    custom_buttons.append(button_data)
-    set_server_setting(interaction.guild.id, 'ticket_custom_buttons', custom_buttons)
-    save_data()
-    
-    await interaction.response.send_message(f'✅ Botón "{label}" agregado. ID: {button_id}\nUsa /send_ticket_panel para actualizar el panel.', ephemeral=True)
-    print(f'[Config] Botón de ticket agregado en servidor {interaction.guild.name}: {label} (ID: {button_id})')
-
-
-# Vista para el botón de crear ticket
-class TicketButtonView(discord.ui.View):
-    def __init__(self, guild_id=None):
-        super().__init__(timeout=None)
-        self.guild_id = guild_id
-        self.custom_buttons = []
-    
-    def add_custom_buttons(self, guild_id):
-        self.guild_id = guild_id
-        self.custom_buttons = get_server_setting(guild_id, 'ticket_custom_buttons', [])
-        
-        # Limpiar botones existentes
-        self.clear_items()
-        
-        # Si hay botones personalizados, agregarlos
-        if self.custom_buttons:
-            for btn_data in self.custom_buttons:
-                style_map = {
-                    'primary': discord.ButtonStyle.primary,
-                    'secondary': discord.ButtonStyle.secondary,
-                    'success': discord.ButtonStyle.success,
-                    'danger': discord.ButtonStyle.danger
-                }
-                
-                button = discord.ui.Button(
-                    label=btn_data['label'],
-                    style=style_map.get(btn_data.get('style', 'primary'), discord.ButtonStyle.primary),
-                    emoji=btn_data.get('emoji', '🎫'),
-                    custom_id=btn_data['id']
-                )
-                button.callback = lambda interaction, data=btn_data: self.create_ticket(interaction, data)
-                self.add_item(button)
-        else:
-            # Botón por defecto si no hay personalizados
-            button = discord.ui.Button(label='🎫 Crear Ticket', style=discord.ButtonStyle.primary, emoji='🎫')
-            button.callback = lambda interaction: self.create_ticket(interaction, None)
-            self.add_item(button)
-    
-    async def create_ticket(self, interaction: discord.Interaction, button_data=None):
-        server_id = str(interaction.guild.id)
-        category_id = get_server_setting(interaction.guild.id, 'ticket_category')
-        
-        if not category_id:
-            await interaction.response.send_message('❌ El sistema de tickets no está configurado. Contacta a un administrador.', ephemeral=True)
-            return
-        
-        # Verificar límite de tickets por usuario
-        max_tickets = get_server_setting(interaction.guild.id, 'ticket_max_per_user', 1)
-        user_id = str(interaction.user.id)
-        
-        if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
-            user_tickets = [t for t in data['servers'][server_id]['tickets'].values() if t['user_id'] == user_id]
-            if len(user_tickets) >= max_tickets:
-                await interaction.response.send_message(f'❌ Ya tienes el máximo de tickets permitidos ({max_tickets}).', ephemeral=True)
-                return
-        
-        category = interaction.guild.get_channel(category_id)
-        if not category:
-            await interaction.response.send_message('❌ La categoría de tickets no existe. Contacta a un administrador.', ephemeral=True)
-            return
-        
-        # Usar mensaje personalizado del botón o el por defecto
-        welcome_message = button_data.get('message') if button_data else get_server_setting(interaction.guild.id, 'ticket_welcome_message', '¡Gracias por crear un ticket! El equipo de soporte te responderá pronto.')
-        button_label = button_data.get('label', 'Ticket') if button_data else 'Ticket'
-        
-        # Crear el canal de ticket
-        ticket_number = len(data['servers'][server_id]['tickets']) + 1 if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id] else 1
-        channel_name = f'ticket-{button_label.lower().replace(" ", "-")}-{interaction.user.name}-{ticket_number}'
-        
-        try:
-            channel = await interaction.guild.create_text_channel(
-                name=channel_name,
-                category=category,
-                overwrites={
-                    interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                    interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True, embed_links=True),
-                    interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True)
-                }
-            )
-            
-            # Agregar rol de soporte si está configurado
-            support_role_id = get_server_setting(interaction.guild.id, 'ticket_support_role')
-            if support_role_id:
-                support_role = interaction.guild.get_role(support_role_id)
-                if support_role:
-                    await channel.set_permissions(support_role, read_messages=True, send_messages=True)
-            
-            # Guardar el ticket
-            if 'servers' not in data:
-                data['servers'] = {}
-            if server_id not in data['servers']:
-                data['servers'][server_id] = {}
-            if 'tickets' not in data['servers'][server_id]:
-                data['servers'][server_id]['tickets'] = {}
-            
-            data['servers'][server_id]['tickets'][str(channel.id)] = {
-                'user_id': str(interaction.user.id),
-                'created_at': datetime.now().isoformat(),
-                'button_type': button_label
-            }
-            save_data()
-            
-            embed = discord.Embed(
-                title=f'🎫 Ticket de {button_label}',
-                description=f'{welcome_message}\n\nUsa /close para cerrar este ticket.',
-                color=0x3498db
-            )
-            embed.add_field(name='Usuario', value=interaction.user.mention, inline=True)
-            embed.add_field(name='Fecha', value=datetime.now().strftime('%d/%m/%Y %H:%M'), inline=True)
-            
-            await channel.send(embed=embed)
-            
-            # Log de ticket creado
-            log_channel_id = get_server_setting(interaction.guild.id, 'ticket_log_channel')
-            if log_channel_id:
-                log_channel = interaction.guild.get_channel(log_channel_id)
-                if log_channel:
-                    await send_log(
-                        guild=interaction.guild,
-                        title='Ticket Creado',
-                        description=f'{interaction.user.mention} ha creado un ticket de {button_label}',
-                        color=0x3498db,
-                        fields=[
-                            {'name': 'Usuario', 'value': interaction.user.name, 'inline': True},
-                            {'name': 'Tipo', 'value': button_label, 'inline': True},
-                            {'name': 'Canal', 'value': channel.mention, 'inline': True},
-                            {'name': 'Fecha', 'value': datetime.now().strftime('%d/%m/%Y %H:%M'), 'inline': True}
-                        ],
-                        author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
-                    )
-            
-            await interaction.response.send_message(f'✅ Ticket de {button_label} creado: {channel.mention}', ephemeral=True)
-            
-        except Exception as e:
-            await interaction.response.send_message(f'❌ Error al crear el ticket: {e}', ephemeral=True)
-
-@bot.tree.command(name='send_ticket_panel', description='Envía el panel de tickets al canal configurado')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def send_ticket_panel(interaction: discord.Interaction):
-    panel_channel_id = get_server_setting(interaction.guild.id, 'ticket_panel_channel')
-    
-    if not panel_channel_id:
-        await interaction.response.send_message('❌ Primero configura el canal del panel. Usa /config_ticket_category para configurar la categoría de tickets.', ephemeral=True)
-        return
-    
-    panel_channel = interaction.guild.get_channel(panel_channel_id)
-    if not panel_channel:
-        await interaction.response.send_message('❌ El canal del panel no existe. Configúralo nuevamente.', ephemeral=True)
-        return
-    
-    custom_buttons = get_server_setting(interaction.guild.id, 'ticket_custom_buttons', [])
-    
-    embed = discord.Embed(
-        title='🎫 Sistema de Tickets',
-        description='¿Necesitas ayuda? Crea un ticket de soporte y nuestro equipo te atenderá lo antes posible.',
-        color=0x3498db
-    )
-    
-    if custom_buttons:
-        button_list = '\n'.join([f'• {btn.get("emoji", "🎫")} {btn["label"]}' for btn in custom_buttons])
-        embed.add_field(name='📋 Tipos de Tickets', value=button_list, inline=False)
-    else:
-        embed.add_field(name='📋 Instrucciones', value='• Haz clic en el botón "Crear Ticket"\n• Describe tu problema o consulta\n• Espera la respuesta del equipo de soporte', inline=False)
-    
-    embed.set_footer(text='Sistema de Soporte - 24/7')
-    
-    view = TicketButtonView(interaction.guild.id)
-    view.add_custom_buttons(interaction.guild.id)
-    message = await panel_channel.send(embed=embed, view=view)
-    
-    # Guardar el mensaje del panel
-    set_server_setting(interaction.guild.id, 'ticket_panel_message_id', message.id)
-    save_data()
-    
-    await interaction.response.send_message(f'✅ Panel de tickets enviado a {panel_channel.mention}', ephemeral=True)
-
-@bot.tree.command(name='delete_ticket_button', description='Elimina un botón personalizado de tickets')
-@discord.app_commands.describe(button_id='ID del botón a eliminar')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def delete_ticket_button(interaction: discord.Interaction, button_id: str):
-    try:
-        # Validar input
-        button_id = validate_string_length(button_id, 50, "ID del botón")
-        if not button_id.strip():
-            await interaction.response.send_message('❌ El ID del botón no puede estar vacío.', ephemeral=True)
-            return
-        
-        custom_buttons = get_server_setting(interaction.guild.id, 'ticket_custom_buttons', [])
-        
-        if not custom_buttons:
-            await interaction.response.send_message('❌ No hay botones personalizados configurados.', ephemeral=True)
-            return
-        
-        # Buscar el botón por ID
-        button_to_delete = None
-        for btn in custom_buttons:
-            if btn['id'] == button_id:
-                button_to_delete = btn
-                break
-        
-        if not button_to_delete:
-            await interaction.response.send_message('❌ Botón no encontrado. Verifica los IDs de botones configurados.', ephemeral=True)
-            return
-        
-        # Eliminar el botón
-        custom_buttons.remove(button_to_delete)
-        set_server_setting(interaction.guild.id, 'ticket_custom_buttons', custom_buttons)
-        save_data()
-        
-        await interaction.response.send_message(f'✅ Botón "{button_to_delete["label"]}" eliminado. Usa /send_ticket_panel para actualizar el panel.', ephemeral=True)
-    except ValueError as e:
-        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
-
 @bot.tree.command(name='config_ranking_channel', description='Configura el canal para el ranking de niveles')
 @discord.app_commands.describe(channel='Canal para el ranking')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -3551,7 +3213,6 @@ async def config_show(interaction: discord.Interaction):
     # Obtener configuración específica del servidor
     level_channel_id = get_server_setting(interaction.guild.id, 'level_channel')
     welcome_channel_id = get_server_setting(interaction.guild.id, 'welcome_channel')
-    ticket_category_id = get_server_setting(interaction.guild.id, 'ticket_category')
     ranking_channel_id = get_server_setting(interaction.guild.id, 'ranking_channel')
     stream_channel_id = get_server_setting(interaction.guild.id, 'stream_channel')
     log_channel_id = get_server_setting(interaction.guild.id, 'log_channel')
@@ -3574,12 +3235,6 @@ async def config_show(interaction: discord.Interaction):
         embed.add_field(name='Canal de Bienvenida', value=welcome_channel.mention if welcome_channel else 'No encontrado', inline=False)
     else:
         embed.add_field(name='Canal de Bienvenida', value='No configurado', inline=False)
-    
-    if ticket_category_id:
-        ticket_category = bot.get_channel(ticket_category_id)
-        embed.add_field(name='Categoría de Tickets', value=ticket_category.name if ticket_category else 'No encontrada', inline=False)
-    else:
-        embed.add_field(name='Categoría de Tickets', value='No configurada', inline=False)
     
     if ranking_channel_id:
         ranking_channel = bot.get_channel(ranking_channel_id)
@@ -4229,25 +3884,6 @@ async def send_event(interaction: discord.Interaction, event_name: str, descript
     
     await interaction.response.send_message('✅ Evento enviado al canal de notificaciones')
 
-
-@bot.tree.command(name='close', description='Cierra el ticket actual')
-async def close(interaction: discord.Interaction):
-    if not interaction.channel or 'ticket-' not in interaction.channel.name:
-        await interaction.response.send_message('Este comando solo funciona en canales de tickets.', ephemeral=True)
-        return
-    
-    server_id = str(interaction.guild.id)
-    
-    # Eliminar del servidor específico
-    if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
-        if str(interaction.channel.id) in data['servers'][server_id]['tickets']:
-            del data['servers'][server_id]['tickets'][str(interaction.channel.id)]
-    
-    save_data()
-    
-    await interaction.response.send_message('🔒 Cerrando ticket en 5 segundos...')
-    await asyncio.sleep(5)
-    await interaction.channel.delete()
 
 # Sistema de Gestión de Roles
 @bot.tree.command(name='create_role', description='Crea un nuevo rol')
