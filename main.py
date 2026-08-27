@@ -2308,9 +2308,9 @@ async def level(interaction: discord.Interaction):
         embed.add_field(name='XP', value=f'{xp}/{xp_needed}', inline=True)
         embed.add_field(name='Progreso', value=f'{(xp/xp_needed)*100:.1f}%', inline=True)
         
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
-        await interaction.response.send_message('Aún no tienes nivel. ¡Envía mensajes para ganar XP!')
+        await interaction.response.send_message('Aún no tienes nivel. ¡Envía mensajes para ganar XP!', ephemeral=True)
 
 @bot.tree.command(name='top', description='Muestra el top 10 usuarios por nivel')
 async def top(interaction: discord.Interaction):
