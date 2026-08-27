@@ -3,12 +3,24 @@ from discord.ext import commands
 import asyncio
 import json
 import os
+import logging
 from datetime import datetime, timedelta
 import requests
 import re
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Cargar variables de entorno
 load_dotenv()
@@ -39,10 +51,10 @@ def load_data():
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
-            print(f'[Error] Error al decodificar JSON: {e}. Creando datos por defecto.')
+            logger.error(f'Error al decodificar JSON: {e}. Creando datos por defecto.')
             return create_default_data()
         except Exception as e:
-            print(f'[Error] Error al cargar datos: {e}. Creando datos por defecto.')
+            logger.error(f'Error al cargar datos: {e}. Creando datos por defecto.')
             return create_default_data()
     return create_default_data()
 
@@ -116,10 +128,10 @@ def validate_data():
     # Validar estructura principal
     for key, expected_type in required_keys.items():
         if key not in data:
-            print(f'[Validación] Campo faltante: {key}, agregando valor por defecto')
+            logger.warning(f'Campo faltante: {key}, agregando valor por defecto')
             data[key] = required_keys[key]() if callable(required_keys[key]) else required_keys[key]
         elif not isinstance(data[key], expected_type):
-            print(f'[Validación] Campo {key} tiene tipo incorrecto, corrigiendo')
+            logger.warning(f'Campo {key} tiene tipo incorrecto, corrigiendo')
             data[key] = required_keys[key]() if callable(required_keys[key]) else required_keys[key]
 
     # Validar configuración
@@ -128,13 +140,13 @@ def validate_data():
 
     for key, expected_types in required_config_keys.items():
         if key not in data['config']:
-            print(f'[Validación] Campo de configuración faltante: {key}, agregando valor por defecto')
+            logger.warning(f'Campo de configuración faltante: {key}, agregando valor por defecto')
             if isinstance(expected_types, type):
                 data['config'][key] = expected_types() if expected_types != type(None) else None
             else:
                 data['config'][key] = expected_types[0]() if expected_types[0] != type(None) else None
         elif not isinstance(data['config'][key], expected_types):
-            print(f'[Validación] Campo de configuración {key} tiene tipo incorrecto, corrigiendo')
+            logger.warning(f'Campo de configuración {key} tiene tipo incorrecto, corrigiendo')
             if isinstance(expected_types, type):
                 data['config'][key] = expected_types() if expected_types != type(None) else None
             else:
@@ -152,7 +164,7 @@ def validate_data():
         data['servers'] = {}
 
     save_data()
-    print('[Validación] Datos validados y corregidos correctamente')
+    logger.info('Datos validados y corregidos correctamente')
 
 # Sistema de caché y guardado optimizado
 _data_needs_save = False
@@ -173,9 +185,9 @@ async def _auto_save():
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
                 _data_needs_save = False
-                print('[Optimización] Datos guardados automáticamente')
+                logger.info('Datos guardados automáticamente')
             except Exception as e:
-                print(f'[Error] Error al guardar datos: {e}')
+                logger.error(f'Error al guardar datos: {e}')
 
 def save_data_immediate():
     """Guarda datos inmediatamente (sin caché) para operaciones críticas"""
@@ -183,7 +195,7 @@ def save_data_immediate():
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
     except Exception as e:
-        print(f'[Error] Error al guardar datos: {e}')
+        logger.error(f'Error al guardar datos: {e}')
         raise
 
 # Caché de usuarios para evitar llamadas repetitivas a la API
@@ -234,59 +246,102 @@ validate_data()  # Validar y corregir estructura de datos
 stream_notifications = {}  # {server_id-streamer_key: timestamp}
 voice_join_times = {}  # {user_id: {guild_id: {channel_id: join_time}}}
 
+# Sistema de validación de inputs
+def validate_string_length(value: str, max_length: int, field_name: str) -> str:
+    """Valida que un string no exceda la longitud máxima"""
+    if not value:
+        return value
+    if len(value) > max_length:
+        raise ValueError(f"{field_name} no puede exceder {max_length} caracteres")
+    return value
+
+def validate_username(username: str) -> str:
+    """Valida que un username de streamer sea seguro"""
+    if not username:
+        raise ValueError("El username no puede estar vacío")
+    # Solo permitir caracteres alfanuméricos, guiones y guiones bajos
+    if not re.match(r'^[a-zA-Z0-9_-]+$', username):
+        raise ValueError("El username solo puede contener letras, números, guiones y guiones bajos")
+    if len(username) > 50:
+        raise ValueError("El username no puede exceder 50 caracteres")
+    return username
+
+def validate_url(url: str) -> str:
+    """Valida que una URL sea segura"""
+    if not url:
+        return url
+    # Validar formato básico de URL
+    if not re.match(r'^https?://', url):
+        raise ValueError("La URL debe comenzar con http:// o https://")
+    # Verificar que no contenga caracteres peligrosos
+    dangerous_chars = ['<', '>', '"', "'", '\\', '&', '|', ';', '$', '`']
+    for char in dangerous_chars:
+        if char in url:
+            raise ValueError(f"La URL contiene caracteres peligrosos: {char}")
+    return url
+
+def validate_attachment(attachment) -> tuple[bool, str]:
+    """Valida si un archivo adjunto es seguro. Retorna (is_safe, reason)"""
+    # Verificar tamaño (máximo 10MB)
+    if attachment.size > 10 * 1024 * 1024:
+        return False, f"Archivo muy grande ({attachment.size / (1024*1024):.1f}MB). Posible malware."
+    
+    # Verificar extensión
+    dangerous_extensions = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.jar', '.msi', '.dll', '.app', '.deb', '.rpm']
+    filename_lower = attachment.filename.lower()
+    
+    for ext in dangerous_extensions:
+        if filename_lower.endswith(ext):
+            return False, f"Extensión peligrosa detectada: {ext}"
+    
+    # Verificar nombre del archivo (caracteres sospechosos)
+    suspicious_patterns = ['setup', 'install', 'crack', 'hack', 'keygen', 'patch', 'trojan', 'malware', 'virus']
+    for pattern in suspicious_patterns:
+        if pattern in filename_lower:
+            return False, f"Nombre de archivo sospechoso: {pattern}"
+    
+    return True, "Archivo validado"
+
+def validate_discord_id(id_value: str, field_name: str) -> int:
+    """Valida que un ID de Discord sea válido"""
+    try:
+        id_int = int(id_value)
+        if id_int < 0 or id_int > 999999999999999999:
+            raise ValueError(f"{field_name} no es un ID de Discord válido")
+        return id_int
+    except ValueError:
+        raise ValueError(f"{field_name} debe ser un número entero válido")
+
 # Sistema de rate limiting mejorado
 log_rate_limit = {}  # {user_id: {last_log_time}}
 LOG_RATE_LIMIT_SECONDS = 5  # Máximo 1 log por usuario cada 5 segundos
 
-# Cooldowns para comandos frecuentes
-command_cooldowns = {}  # {user_id: {command_name: last_used_time}}
-COOLDOWN_PERIODS = {
-    'ping': 10,  # 10 segundos
-    'level': 30,  # 30 segundos
-    'top': 60,  # 1 minuto
-    'server_stats': 60,  # 1 minuto
-    'info': 30  # 30 segundos
-}
-
-def check_cooldown(user_id, command_name):
-    """Verifica si un usuario está en cooldown para un comando"""
-    current_time = datetime.now().timestamp()
-    if user_id not in command_cooldowns:
-        command_cooldowns[user_id] = {}
-
-    if command_name in command_cooldowns[user_id]:
-        last_used = command_cooldowns[user_id][command_name]
-        cooldown_period = COOLDOWN_PERIODS.get(command_name, 0)
-        if current_time - last_used < cooldown_period:
-            remaining = int(cooldown_period - (current_time - last_used))
-            return False, remaining
-
-    command_cooldowns[user_id][command_name] = current_time
-    return True, 0
+# Cooldowns para comandos frecuentes (usando sistema nativo de discord.py)
+# Nota: Se usará @discord.app_commands.checks.cooldown() en comandos específicos
 
 # Función para enviar logs
 async def send_log(guild, title, description, color=0x3498db, fields=None, author=None, thumbnail=None):
     if not guild:
-        print(f'[Logs] No se proporcionó guild. Evento: {title}')
+        logger.warning(f'No se proporcionó guild. Evento: {title}')
         return
 
     # Obtener log_channel específico del servidor con fallback a global
     log_channel_id = get_server_setting(guild.id, 'log_channel', data['config'].get('log_channel'))
     
     if not log_channel_id:
-        print(f'[Logs] Canal de logs no configurado para servidor {guild.name}. Evento: {title}')
+        logger.debug(f'Canal de logs no configurado para servidor {guild.name}. Evento: {title}')
         return
 
     try:
         log_channel = bot.get_channel(log_channel_id)
         if not log_channel:
-            print(f'[Logs] Canal de logs no encontrado. ID: {log_channel_id}. Evento: {title}')
+            logger.warning(f'Canal de logs no encontrado. ID: {log_channel_id}. Evento: {title}')
             return
 
         # Verificar permisos del bot en el canal
         bot_permissions = log_channel.permissions_for(guild.me)
         if not bot_permissions.send_messages or not bot_permissions.embed_links:
-            print(f'[Logs] El bot no tiene permisos para enviar mensajes en el canal de logs. Evento: {title}')
+            logger.warning(f'El bot no tiene permisos para enviar mensajes en el canal de logs. Evento: {title}')
             return
 
         embed = discord.Embed(
@@ -309,13 +364,13 @@ async def send_log(guild, title, description, color=0x3498db, fields=None, autho
         embed.set_footer(text=f'Sistema de Logs - {guild.name}')
 
         await log_channel.send(embed=embed)
-        print(f'[Logs] Log enviado exitosamente: {title}')
+        logger.info(f'Log enviado exitosamente: {title}')
     except discord.errors.Forbidden as e:
-        print(f'[Logs] Error de permisos al enviar log: {e}. Evento: {title}')
+        logger.error(f'Error de permisos al enviar log: {e}. Evento: {title}')
     except discord.errors.NotFound as e:
-        print(f'[Logs] Canal de logs no encontrado (404): {e}. Evento: {title}')
+        logger.error(f'Canal de logs no encontrado (404): {e}. Evento: {title}')
     except Exception as e:
-        print(f'[Logs] Error al enviar log: {e}. Evento: {title}')
+        logger.error(f'Error al enviar log: {e}. Evento: {title}')
 
 # Función para enviar notificaciones
 async def send_notification(guild, notification_type, message, color=0x3498db, mention_role=True):
@@ -352,9 +407,9 @@ async def send_notification(guild, notification_type, message, color=0x3498db, m
         embed.set_footer(text=f'Sistema de Notificaciones - {guild.name}')
         
         await notifications_channel.send(content=role_mention, embed=embed)
-        print(f'[Notificaciones] Notificación enviada: {notification_type}')
+        logger.info(f'Notificación enviada: {notification_type}')
     except Exception as e:
-        print(f'[Notificaciones] Error al enviar notificación: {e}')
+        logger.error(f'Error al enviar notificación: {e}')
 
 # Listas de protección
 DANGEROUS_DOMAINS = [
@@ -393,13 +448,13 @@ SUSPICIOUS_PATTERNS = [
 # Evento ready
 @bot.event
 async def on_ready():
-    print(f'Bot conectado: {bot.user.name}')
-    print(f'ID: {bot.user.id}')
-    print(f'Servidores: {len(bot.guilds)}')
+    logger.info(f'Bot conectado: {bot.user.name}')
+    logger.info(f'ID: {bot.user.id}')
+    logger.info(f'Servidores: {len(bot.guilds)}')
 
     # Iniciar tarea de auto-save optimizado
     bot.loop.create_task(_auto_save())
-    print('[Optimización] Sistema de auto-save iniciado')
+    logger.info('Sistema de auto-save iniciado')
 
     # Iniciar tarea de actualización de timers de sorteos
     bot.loop.create_task(update_giveaway_timers())
@@ -408,25 +463,25 @@ async def on_ready():
     # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
         synced = await bot.tree.sync()
-        print(f'Sincronizados {len(synced)} comandos globales')
+        logger.info(f'Sincronizados {len(synced)} comandos globales')
     except discord.app_commands.CommandSyncFailure as e:
-        print(f'Error de sincronización de comandos: {e}')
+        logger.error(f'Error de sincronización de comandos: {e}')
         print('Intentando sincronización forzada...')
         try:
             synced = await bot.tree.sync(guild=None)
-            print(f'Sincronizados {len(synced)} comandos globales (forzado)')
+            logger.info(f'Sincronizados {len(synced)} comandos globales (forzado)')
         except Exception as e2:
-            print(f'Error en sincronización forzada: {e2}')
+            logger.error(f'Error en sincronización forzada: {e2}')
     except Exception as e:
-        print(f'Error general al sincronizar comandos: {e}')
+        logger.error(f'Error general al sincronizar comandos: {e}')
 
     # Sincronizar comandos por servidor si es necesario
     for guild in bot.guilds:
         try:
             guild_synced = await bot.tree.sync(guild=guild)
-            print(f'Sincronizados {len(guild_synced)} comandos en servidor {guild.name}')
+            logger.info(f'Sincronizados {len(guild_synced)} comandos en servidor {guild.name}')
         except Exception as e:
-            print(f'Error al sincronizar comandos en servidor {guild.name}: {e}')
+            logger.error(f'Error al sincronizar comandos en servidor {guild.name}: {e}')
 
     # Iniciar actualización automática del ranking
     bot.loop.create_task(update_ranking_periodically())
@@ -450,7 +505,7 @@ async def update_ranking_periodically():
             # También actualizar el ranking global para compatibilidad
             await update_ranking()
         except Exception as e:
-            print(f'[Ranking] Error en actualización periódica: {e}')
+            logger.error(f'Error en actualización periódica: {e}')
             await asyncio.sleep(60)  # Esperar antes de reintentar
 
 # Monitoreo periódico de streams
@@ -460,7 +515,7 @@ async def check_streams_periodically():
             await asyncio.sleep(120)
             await check_all_streamers()
         except Exception as e:
-            print(f'[Streams] Error en monitoreo periódico: {e}')
+            logger.error(f'Error en monitoreo periódico: {e}')
             await asyncio.sleep(120)  # Esperar antes de reintentar
 
 # Actualización de temporizadores de sorteos
@@ -510,9 +565,9 @@ async def update_giveaway_timers():
                                                 break
                                         
                                         await message.edit(embed=embed)
-                                        print(f'[Sorteo] Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
+                                        logger.debug(f'Temporizador actualizado para "{giveaway["prize"]}": {time_str}')
                                     except Exception as e:
-                                        print(f'[Sorteo] Error al actualizar mensaje: {e}')
+                                        logger.error(f'Error al actualizar mensaje: {e}')
                                 
                                 # Enviar recordatorio en el canal de anuncios
                                 if giveaway_announcement_channel_id:
@@ -539,11 +594,11 @@ async def update_giveaway_timers():
                                             data['servers'][server_id]['giveaways'][giveaway_id] = giveaway
                                             save_data()
                                             
-                                            print(f'[Sorteo] Recordatorio enviado para "{giveaway["prize"]}"')
+                                            logger.info(f'Recordatorio enviado para "{giveaway["prize"]}"')
                                     except Exception as e:
-                                        print(f'[Sorteo] Error al enviar recordatorio: {e}')
+                                        logger.error(f'Error al enviar recordatorio: {e}')
                         except Exception as e:
-                            print(f'[Sorteo] Error en actualización del sorteo {giveaway_id}: {e}')
+                            logger.error(f'Error en actualización del sorteo {giveaway_id}: {e}')
             
             # Fallback a sorteos globales para compatibilidad
             if 'giveaways' in data:
@@ -612,9 +667,9 @@ async def update_giveaway_timers():
                                 except Exception as e:
                                     print(f'[Sorteo] Error al enviar recordatorio: {e}')
                     except Exception as e:
-                        print(f'[Sorteo] Error en actualización: {e}')
+                        logger.error(f'Error en actualización: {e}')
         except Exception as e:
-            print(f'[Sorteo] Error general en actualización de temporizadores: {e}')
+            logger.error(f'Error general en actualización de temporizadores: {e}')
 
 # Actualizar ranking
 async def update_ranking(guild_id=None):
@@ -638,9 +693,9 @@ async def update_ranking(guild_id=None):
         message = await channel.fetch_message(ranking_message_id)
         embed = create_ranking_embed(channel.guild.id)
         await message.edit(embed=embed)
-        print('Ranking actualizado')
+        logger.info('Ranking actualizado')
     except Exception as e:
-        print(f'Error al actualizar ranking: {e}')
+        logger.error(f'Error al actualizar ranking: {e}')
 
 # Crear embed de ranking
 def create_ranking_embed(guild_id):
@@ -703,7 +758,7 @@ async def check_all_streamers():
                     elif not is_live and key in stream_notifications:
                         del stream_notifications[key]
                 except Exception as e:
-                    print(f'Error checking streamer {streamer["username"]}: {e}')
+                    logger.error(f'Error checking streamer {streamer["username"]}: {e}')
     
     # Fallback a configuración global para compatibilidad
     if data['config'].get('stream_channel') and data['config'].get('streamers'):
@@ -721,7 +776,7 @@ async def check_all_streamers():
                     elif not is_live and key in stream_notifications:
                         del stream_notifications[key]
                 except Exception as e:
-                    print(f'Error checking streamer {streamer["username"]}: {e}')
+                    logger.error(f'Error checking streamer {streamer["username"]}: {e}')
 
 # Verificar si streamer está en live
 async def check_streamer_live(platform, username):
@@ -822,9 +877,9 @@ async def on_message(message):
                 if role:
                     try:
                         await message.author.add_roles(role)
-                        print(f'[Level Roles] Rol {role.name} asignado a {message.author.name} por alcanzar nivel {new_level}')
+                        logger.info(f'Rol {role.name} asignado a {message.author.name} por alcanzar nivel {new_level}')
                     except discord.errors.Forbidden:
-                        print(f'[Level Roles] Error: El bot no tiene permisos para asignar roles (Manage Roles)')
+                        logger.warning('Error: El bot no tiene permisos para asignar roles (Manage Roles)')
 
             level_channel_id = get_server_setting(message.guild.id, 'level_channel', data['config'].get('level_channel'))
             level_channel = message.channel
@@ -934,15 +989,10 @@ async def check_dangerous_content(message):
     
     if message.attachments:
         for attachment in message.attachments:
-            if attachment.size > 10 * 1024 * 1024:
-                await delete_and_warn(message, '⚠️ Archivo muy grande detectado. Posible malware.')
+            is_safe, reason = validate_attachment(attachment)
+            if not is_safe:
+                await delete_and_warn(message, f'⛔ {reason} Mensaje eliminado por seguridad.')
                 return True
-            
-            dangerous_extensions = ['.exe', '.bat', '.cmd', '.scr', '.pif', '.com', '.vbs', '.js', '.jar']
-            for ext in dangerous_extensions:
-                if attachment.filename.lower().endswith(ext):
-                    await delete_and_warn(message, '⛔ Archivo ejecutable peligroso detectado. Mensaje eliminado.')
-                    return True
     
     return False
 
@@ -1057,7 +1107,7 @@ async def handle_spam_violation(message, violation_type):
             await message.channel.send(f'⛔ {message.author.mention} ha recibido un timeout de 5 minutos por spam continuo.')
             user_data['warnings'] = 0  # Reset advertencias después de timeout
         except Exception as e:
-            print(f'Error al aplicar timeout: {e}')
+            logger.error(f'Error al aplicar timeout: {e}')
     
     # Log de spam
     await send_log(
@@ -1074,7 +1124,7 @@ async def handle_spam_violation(message, violation_type):
         author={'name': message.author.name, 'icon_url': message.author.display_avatar.url}
     )
     
-    print(f'[Anti-Spam] {message.author.name} detectado por {violation_type}. Advertencias: {user_data["warnings"]}')
+    logger.warning(f'{message.author.name} detectado por {violation_type}. Advertencias: {user_data["warnings"]}')
 
 async def delete_and_warn(message, reason):
     try:
@@ -1103,10 +1153,10 @@ async def delete_and_warn(message, reason):
                 except:
                     pass
         
-        print(f'[Auto-Protección] Mensaje eliminado de {message.author.name}: {reason}')
+        logger.warning(f'Mensaje eliminado de {message.author.name}: {reason}')
         
     except Exception as e:
-        print(f'Error en auto-protección: {e}')
+        logger.error(f'Error en auto-protección: {e}')
 
 # Evento guild_member_add
 @bot.event
@@ -1223,7 +1273,7 @@ async def on_raw_reaction_add(payload):
                     role = guild.get_role(server_verification_role_id)
                     if role:
                         await member.add_roles(role)
-                        print(f'[Verificación] Rol {role.name} asignado a {member.name} en servidor {guild.name}')
+                        logger.info(f'Rol {role.name} asignado a {member.name} en servidor {guild.name}')
 
                         # Log de verificación
                         await send_log(
@@ -1238,7 +1288,7 @@ async def on_raw_reaction_add(payload):
                             author={'name': member.name, 'icon_url': member.display_avatar.url}
                         )
                     else:
-                        print(f'[Verificación] Rol de verificación no encontrado en servidor {guild.name}: {server_verification_role_id}')
+                        logger.warning(f'Rol de verificación no encontrado en servidor {guild.name}: {server_verification_role_id}')
                         return
 
                     # Marcar como verificado en el servidor específico
@@ -1253,23 +1303,23 @@ async def on_raw_reaction_add(payload):
                             auto_role = guild.get_role(role_id)
                             if auto_role:
                                 await member.add_roles(auto_role)
-                                print(f'[Auto-Roles] Auto-rol {auto_role.name} asignado a {member.name} en servidor {guild.name}')
+                                logger.info(f'Auto-rol {auto_role.name} asignado a {member.name} en servidor {guild.name}')
 
                     # Enviar confirmación por mensaje privado (DM)
                     try:
                         await member.send(f'✅ ¡Has sido verificado exitosamente en **{guild.name}**! Ahora tienes acceso completo al servidor.')
-                        print(f'[Verificación] Mensaje privado enviado a {member.name} en servidor {guild.name}')
+                        logger.info(f'Mensaje privado enviado a {member.name} en servidor {guild.name}')
                     except discord.errors.Forbidden:
                         # Si no se puede enviar DM, no enviar nada
-                        print(f'[Verificación] No se pudo enviar DM a {member.name} (DMs desactivados)')
-                    print(f'[Verificación] {member.name} verificado exitosamente en servidor {guild.name}')
+                        logger.debug(f'No se pudo enviar DM a {member.name} (DMs desactivados)')
+                    logger.info(f'{member.name} verificado exitosamente en servidor {guild.name}')
                 else:
-                    print(f'[Verificación] {member.name} ya está verificado en servidor {guild.name}')
+                    logger.debug(f'{member.name} ya está verificado en servidor {guild.name}')
             except discord.errors.Forbidden as e:
-                print(f'[Verificación] Error de permisos en servidor {guild.name}: {e}')
-                print(f'[Verificación] El bot necesita permisos: Manage Roles, Send Messages')
+                logger.error(f'Error de permisos en servidor {guild.name}: {e}')
+                logger.error('El bot necesita permisos: Manage Roles, Send Messages')
             except Exception as e:
-                print(f'Error en verificación: {e}')
+                logger.error(f'Error en verificación: {e}')
 
     # Roles Reaccionables
     server_id = str(payload.guild_id)
@@ -1290,15 +1340,15 @@ async def on_raw_reaction_add(payload):
                         if role in member.roles:
                             # Quitar el rol
                             await member.remove_roles(role)
-                            print(f'[Reaction Roles] Rol {role.name} quitado de {member.name} en servidor {guild.name}')
+                            logger.info(f'Rol {role.name} quitado de {member.name} en servidor {guild.name}')
                         else:
                             # Agregar el rol
                             await member.add_roles(role)
-                            print(f'[Reaction Roles] Rol {role.name} asignado a {member.name} en servidor {guild.name}')
+                            logger.info(f'Rol {role.name} asignado a {member.name} en servidor {guild.name}')
             except discord.errors.Forbidden:
-                print(f'[Reaction Roles] Error de permisos en servidor {guild.name}')
+                logger.warning(f'Error de permisos en servidor {guild.name}')
             except Exception as e:
-                print(f'[Reaction Roles] Error: {e}')
+                logger.error(f'Error: {e}')
 
 # Evento de reacción removida para roles reaccionables
 @bot.event
@@ -1321,65 +1371,50 @@ async def on_raw_reaction_remove(payload):
                     if role and role in member.roles:
                         # Quitar el rol
                         await member.remove_roles(role)
-                        print(f'[Reaction Roles] Rol {role.name} quitado de {member.name} (reacción removida) en servidor {guild.name}')
+                        logger.info(f'Rol {role.name} quitado de {member.name} (reacción removida) en servidor {guild.name}')
             except discord.errors.Forbidden:
-                print(f'[Reaction Roles] Error de permisos en servidor {guild.name}')
+                logger.warning(f'Error de permisos en servidor {guild.name}')
             except Exception as e:
-                print(f'[Reaction Roles] Error: {e}')
+                logger.error(f'Error: {e}')
 
     # Sorteos (verificar en todos los servidores)
     server_id = str(payload.guild_id)
-    print(f'[DEBUG] Reacción recibida - Servidor: {server_id}, Mensaje: {payload.message_id}, Emoji: {payload.emoji}, Usuario: {payload.user_id}')
     
     if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
-        print(f'[DEBUG] Servidor encontrado en data, sorteos disponibles: {list(data["servers"][server_id]["giveaways"].keys())}')
-        
         if str(payload.message_id) in data['servers'][server_id]['giveaways']:
-            print(f'[DEBUG] Mensaje coincide con un sorteo activo')
             try:
                 giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
-                print(f'[DEBUG] Sorteo encontrado: {giveaway["prize"]}')
                 
                 if str(payload.emoji) == '🎉':
-                    print(f'[DEBUG] Emoji es 🎉, procesando participación')
                     guild = bot.get_guild(payload.guild_id)
                     member = guild.get_member(payload.user_id)
                     
-                    print(f'[DEBUG] Miembro: {member}, es bot: {member.bot if member else "N/A"}')
-                    
                     if member and not member.bot:
                         user_id = str(member.id)
-                        print(f'[DEBUG] Usuario ID: {user_id}, ya participante: {user_id in giveaway["participants"]}')
                         
                         if user_id not in giveaway['participants']:
                             giveaway['participants'].append(user_id)
                             data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
                             save_data()
-                            print(f'[Sorteo] {member.name} se unió al sorteo {giveaway["prize"]}')
+                            logger.info(f'{member.name} se unió al sorteo {giveaway["prize"]}')
                             
                             # Actualizar el embed del sorteo con el nuevo contador
                             try:
                                 channel = bot.get_channel(giveaway['channel_id'])
-                                print(f'[DEBUG] Canal: {channel}')
                                 if channel:
                                     message = await channel.fetch_message(giveaway['message_id'])
                                     embed = message.embeds[0]
-                                    print(f'[DEBUG] Embed encontrado con {len(embed.fields)} campos')
                                     
                                     # Actualizar el campo de participantes
                                     for i, field in enumerate(embed.fields):
-                                        print(f'[DEBUG] Campo {i}: {field.name}')
                                         if field.name == '👥 Participantes':
                                             embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
-                                            print(f'[DEBUG] Campo de participantes actualizado a {len(giveaway["participants"])}')
                                             break
                                     
                                     await message.edit(embed=embed)
-                                    print(f'[Sorteo] Contador actualizado: {len(giveaway["participants"])} participantes')
-                                else:
-                                    print(f'[DEBUG] Canal no encontrado')
+                                    logger.info(f'Contador actualizado: {len(giveaway["participants"])} participantes')
                             except Exception as e:
-                                print(f'[Sorteo] Error al actualizar embed: {e}')
+                                logger.error(f'Error al actualizar embed: {e}')
                             
                             # Log de participación en sorteo
                             await send_log(
@@ -1395,15 +1430,9 @@ async def on_raw_reaction_remove(payload):
                                 author={'name': member.name, 'icon_url': member.display_avatar.url}
                             )
                         else:
-                            print(f'[Sorteo] {member.name} ya participó en el sorteo')
+                            logger.debug(f'{member.name} ya participó en el sorteo')
             except Exception as e:
-                print(f'Error en sorteo: {e}')
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f'[DEBUG] Mensaje no coincide con ningún sorteo activo')
-    else:
-        print(f'[DEBUG] Servidor no encontrado en data o no tiene sorteos')
+                logger.error(f'Error en sorteo: {e}')
 
 # Evento miembro salió
 @bot.event
@@ -1959,30 +1988,24 @@ async def assign_auto_roles(member):
 
     try:
         bot_role = member.guild.me.top_role
-        print(f'[Auto-Roles] Rol del bot: {bot_role.name} (posición: {bot_role.position})')
+        logger.debug(f'Rol del bot: {bot_role.name} (posición: {bot_role.position})')
 
         for role_id in auto_roles:
             role = member.guild.get_role(role_id)
             if role:
-                print(f'[Auto-Roles] Intentando asignar rol: {role.name} (posición: {role.position})')
+                logger.debug(f'Intentando asignar rol: {role.name} (posición: {role.position})')
                 if role.position >= bot_role.position:
-                    print(f'[Auto-Roles] ERROR: Rol {role.name} está por encima o al mismo nivel que el rol del bot')
+                    logger.warning(f'ERROR: Rol {role.name} está por encima o al mismo nivel que el rol del bot')
                 else:
                     await member.add_roles(role)
-                    print(f'[Auto-Roles] Asignado rol {role.name} a {member.name}')
+                    logger.info(f'Asignado rol {role.name} a {member.name}')
     except Exception as e:
-        print(f'Error al asignar auto-roles a {member.name}: {e}')
+        logger.error(f'Error al asignar auto-roles a {member.name}: {e}')
 
 # Comandos slash
 @bot.tree.command(name='ping', description='Comprueba la latencia del bot')
+@discord.app_commands.checks.cooldown(1, 10, key=lambda i: i.user.id)
 async def ping(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    can_execute, remaining = check_cooldown(user_id, 'ping')
-
-    if not can_execute:
-        await interaction.response.send_message(f'⏱️ Debes esperar {remaining} segundos antes de usar este comando nuevamente.', ephemeral=True)
-        return
-
     try:
         await interaction.response.send_message(f'🏓 Pong! {round(bot.latency * 1000)}ms')
     except discord.errors.NotFound:
@@ -2158,16 +2181,10 @@ async def info(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name='level', description='Muestra tu nivel y XP actual')
+@discord.app_commands.checks.cooldown(1, 30, key=lambda i: i.user.id)
 async def level(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
-        return
-
-    user_id = str(interaction.user.id)
-    can_execute, remaining = check_cooldown(user_id, 'level')
-
-    if not can_execute:
-        await interaction.response.send_message(f'⏱️ Debes esperar {remaining} segundos antes de usar este comando nuevamente.', ephemeral=True)
         return
 
     server_id = str(interaction.guild.id)
@@ -2198,6 +2215,7 @@ async def level(interaction: discord.Interaction):
         await interaction.response.send_message('Aún no tienes nivel. ¡Envía mensajes para ganar XP!', ephemeral=True)
 
 @bot.tree.command(name='top', description='Muestra el top 10 usuarios por nivel')
+@discord.app_commands.checks.cooldown(1, 60, key=lambda i: i.user.id)
 async def top(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
@@ -2265,7 +2283,7 @@ async def add_level_role(interaction: discord.Interaction, level: int, role: dis
     save_data()
 
     await interaction.response.send_message(f'✅ Rol {role.mention} configurado para el nivel **{level}**')
-    print(f'[Level Roles] Rol {role.name} configurado para nivel {level} en servidor {interaction.guild.name}')
+    logger.info(f'Rol {role.name} configurado para nivel {level} en servidor {interaction.guild.name}')
 
 @bot.tree.command(name='remove_level_role', description='Elimina un rol de un nivel específico (Usa /config_level_roles)')
 @discord.app_commands.describe(level='Nivel a eliminar')
@@ -2285,7 +2303,7 @@ async def remove_level_role(interaction: discord.Interaction, level: int):
     save_data()
 
     await interaction.response.send_message(f'✅ Rol del nivel **{level}** eliminado')
-    print(f'[Level Roles] Rol del nivel {level} eliminado en servidor {interaction.guild.name}')
+    logger.info(f'Rol del nivel {level} eliminado en servidor {interaction.guild.name}')
 
 @bot.tree.command(name='list_level_roles', description='Lista todos los roles configurados por nivel (Usa /config_level_roles)')
 async def list_level_roles(interaction: discord.Interaction):
@@ -2801,29 +2819,38 @@ async def send_ticket_panel(interaction: discord.Interaction):
 @discord.app_commands.describe(button_id='ID del botón a eliminar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def delete_ticket_button(interaction: discord.Interaction, button_id: str):
-    custom_buttons = get_server_setting(interaction.guild.id, 'ticket_custom_buttons', [])
-    
-    if not custom_buttons:
-        await interaction.response.send_message('❌ No hay botones personalizados configurados.', ephemeral=True)
-        return
-    
-    # Buscar el botón por ID
-    button_to_delete = None
-    for btn in custom_buttons:
-        if btn['id'] == button_id:
-            button_to_delete = btn
-            break
-    
-    if not button_to_delete:
-        await interaction.response.send_message('❌ Botón no encontrado. Verifica los IDs de botones configurados.', ephemeral=True)
-        return
-    
-    # Eliminar el botón
-    custom_buttons.remove(button_to_delete)
-    set_server_setting(interaction.guild.id, 'ticket_custom_buttons', custom_buttons)
-    save_data()
-    
-    await interaction.response.send_message(f'✅ Botón "{button_to_delete["label"]}" eliminado. Usa /send_ticket_panel para actualizar el panel.', ephemeral=True)
+    try:
+        # Validar input
+        button_id = validate_string_length(button_id, 50, "ID del botón")
+        if not button_id.strip():
+            await interaction.response.send_message('❌ El ID del botón no puede estar vacío.', ephemeral=True)
+            return
+        
+        custom_buttons = get_server_setting(interaction.guild.id, 'ticket_custom_buttons', [])
+        
+        if not custom_buttons:
+            await interaction.response.send_message('❌ No hay botones personalizados configurados.', ephemeral=True)
+            return
+        
+        # Buscar el botón por ID
+        button_to_delete = None
+        for btn in custom_buttons:
+            if btn['id'] == button_id:
+                button_to_delete = btn
+                break
+        
+        if not button_to_delete:
+            await interaction.response.send_message('❌ Botón no encontrado. Verifica los IDs de botones configurados.', ephemeral=True)
+            return
+        
+        # Eliminar el botón
+        custom_buttons.remove(button_to_delete)
+        set_server_setting(interaction.guild.id, 'ticket_custom_buttons', custom_buttons)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Botón "{button_to_delete["label"]}" eliminado. Usa /send_ticket_panel para actualizar el panel.', ephemeral=True)
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_ranking_channel', description='Configura el canal para el ranking de niveles')
 @discord.app_commands.describe(channel='Canal para el ranking')
@@ -2938,36 +2965,65 @@ async def list_streamers(interaction: discord.Interaction):
 @discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
 async def check_stream(interaction: discord.Interaction, platform: str, username: str):
     try:
+        # Validar inputs
+        valid_platforms = ['twitch', 'kick', 'youtube', 'tiktok']
+        if platform.lower() not in valid_platforms:
+            await interaction.response.send_message(f'❌ Plataforma no válida. Opciones: {", ".join(valid_platforms)}', ephemeral=True)
+            return
+        
+        username = validate_username(username)
+        
         is_live = await check_streamer_live(platform, username)
         
         if is_live:
             await interaction.response.send_message(f'✅ {username} está en live en {platform}!')
         else:
             await interaction.response.send_message(f'❌ {username} no está en live en {platform}.')
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f'❌ Error al verificar stream: {e}')
+        logger.error(f'Error al verificar stream: {e}')
+        await interaction.response.send_message(f'❌ Error al verificar stream: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_add_banned_word', description='Agrega una palabra prohibida')
 @discord.app_commands.describe(word='Palabra a prohibir')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_add_banned_word(interaction: discord.Interaction, word: str):
-    if word.lower() not in data['banned_words']:
-        data['banned_words'].append(word.lower())
-        save_data()
-        await interaction.response.send_message(f'✅ Palabra "{word}" agregada a la lista de prohibidas.')
-    else:
-        await interaction.response.send_message(f'⚠️ La palabra "{word}" ya está en la lista.')
+    try:
+        # Validar input
+        word = validate_string_length(word, 50, "Palabra")
+        if not word.strip():
+            await interaction.response.send_message('❌ La palabra no puede estar vacía.', ephemeral=True)
+            return
+        
+        if word.lower() not in data['banned_words']:
+            data['banned_words'].append(word.lower())
+            save_data()
+            await interaction.response.send_message(f'✅ Palabra "{word}" agregada a la lista de prohibidas.')
+        else:
+            await interaction.response.send_message(f'⚠️ La palabra "{word}" ya está en la lista.')
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_remove_banned_word', description='Elimina una palabra prohibida')
 @discord.app_commands.describe(word='Palabra a eliminar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_remove_banned_word(interaction: discord.Interaction, word: str):
-    if word.lower() in data['banned_words']:
-        data['banned_words'].remove(word.lower())
-        save_data()
-        await interaction.response.send_message(f'✅ Palabra "{word}" eliminada de la lista de prohibidas.')
-    else:
-        await interaction.response.send_message(f'⚠️ La palabra "{word}" no está en la lista.')
+    try:
+        # Validar input
+        word = validate_string_length(word, 50, "Palabra")
+        if not word.strip():
+            await interaction.response.send_message('❌ La palabra no puede estar vacía.', ephemeral=True)
+            return
+        
+        if word.lower() in data['banned_words']:
+            data['banned_words'].remove(word.lower())
+            save_data()
+            await interaction.response.send_message(f'✅ Palabra "{word}" eliminada de la lista de prohibidas.')
+        else:
+            await interaction.response.send_message(f'⚠️ La palabra "{word}" no está en la lista.')
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_show', description='Muestra la configuración actual')
 async def config_show(interaction: discord.Interaction):
@@ -3656,7 +3712,7 @@ async def end_giveaway(giveaway_id, server_id=None):
         print(f'[Sorteo] Sorteo "{giveaway["prize"]}" finalizado. Ganadores: {len(winners_mentions)}')
         
     except Exception as e:
-        print(f'Error al finalizar sorteo: {e}')
+        logger.error(f'Error al finalizar sorteo: {e}')
 
 @bot.tree.command(name='end_giveaway', description='Finaliza manualmente un sorteo')
 @discord.app_commands.describe(message_id='ID del mensaje del sorteo')
@@ -3918,10 +3974,21 @@ async def my_subscriptions(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def send_message(interaction: discord.Interaction, channel: discord.TextChannel, message: str, mention_everyone: bool = False):
     try:
+        # Validar inputs
+        message = validate_string_length(message, 2000, "Mensaje")
+        if not message.strip():
+            await interaction.response.send_message('❌ El mensaje no puede estar vacío.', ephemeral=True)
+            return
+        
         # Verificar que el bot tenga permisos en el canal
         bot_permissions = channel.permissions_for(interaction.guild.me)
         if not bot_permissions.send_messages:
             await interaction.response.send_message('❌ El bot no tiene permisos para enviar mensajes en ese canal', ephemeral=True)
+            return
+        
+        # Verificar permisos de mention everyone
+        if mention_everyone and not bot_permissions.mention_everyone:
+            await interaction.response.send_message('❌ El bot no tiene permisos para mencionar @everyone', ephemeral=True)
             return
 
         # Enviar mensaje anónimo
@@ -3931,8 +3998,11 @@ async def send_message(interaction: discord.Interaction, channel: discord.TextCh
             await channel.send(message)
 
         await interaction.response.send_message(f'✅ Mensaje enviado anónimamente a {channel.mention}', ephemeral=True)
-        print(f'[Mensaje Anónimo] Mensaje enviado a {channel.name} por {interaction.user.name}')
+        logger.info(f'Mensaje enviado a {channel.name} por {interaction.user.name}')
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
     except Exception as e:
+        logger.error(f'Error al enviar mensaje: {e}')
         await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
 
 @bot.tree.command(name='send_announcement', description='Envía un anuncio al canal de notificaciones')
