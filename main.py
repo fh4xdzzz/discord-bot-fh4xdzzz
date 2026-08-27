@@ -4313,8 +4313,10 @@ async def update_giveaway_timers():
                             time_str = f"{days}d {hours}h {minutes}m"
                         elif hours > 0:
                             time_str = f"{hours}h {minutes}m"
-                        else:
+                        elif minutes > 0:
                             time_str = f"{minutes}m"
+                        else:
+                            time_str = "Menos de 1m"
                         
                         # Actualizar el embed del sorteo
                         channel = bot.get_channel(giveaway['channel_id'])
