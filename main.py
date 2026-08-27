@@ -3510,9 +3510,21 @@ async def end_giveaway(giveaway_id, server_id=None):
     try:
         channel = bot.get_channel(giveaway['channel_id'])
         if not channel:
+            # Eliminar el sorteo si el canal no existe
+            if server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+            save_data()
             return
         
-        message = await channel.fetch_message(giveaway['message_id'])
+        try:
+            message = await channel.fetch_message(giveaway['message_id'])
+        except discord.NotFound:
+            # El mensaje fue eliminado, eliminar el sorteo de la base de datos
+            print(f'[Sorteo] Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
+            if server_id:
+                del data['servers'][server_id]['giveaways'][giveaway_id]
+            save_data()
+            return
         
         if not giveaway['participants']:
             # Actualizar embed mostrando que no hubo participantes
@@ -4266,9 +4278,10 @@ async def update_giveaway_timers():
                     
                     if time_left.total_seconds() > 0:
                         # Calcular tiempo restante en formato legible
-                        days = time_left.days
-                        hours = time_left.seconds // 3600
-                        minutes = (time_left.seconds % 3600) // 60
+                        total_seconds = int(time_left.total_seconds())
+                        days = total_seconds // 86400
+                        hours = (total_seconds % 86400) // 3600
+                        minutes = (total_seconds % 3600) // 60
                         
                         if days > 0:
                             time_str = f"{days}d {hours}h {minutes}m"
@@ -4292,6 +4305,11 @@ async def update_giveaway_timers():
                                 
                                 await message.edit(embed=embed)
                                 print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante')
+                            except discord.NotFound:
+                                # El mensaje fue eliminado, eliminar el sorteo de la base de datos
+                                print(f'[Sorteo] Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
+                                del data['servers'][server_id]['giveaways'][giveaway_id]
+                                save_data()
                             except Exception as e:
                                 print(f'[Sorteo] Error al actualizar tiempo: {e}')
                 except Exception as e:
