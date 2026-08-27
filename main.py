@@ -2273,26 +2273,26 @@ async def top(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # Configuración
-@bot.tree.command(name='config_level_channel', description='Configura el canal para notificaciones de nivel')
+@bot.tree.command(name='config_level_channel', description='Configura el canal para notificaciones de nivel (Usa /config_notifications)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para notificaciones de nivel')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_level_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'level_channel', channel.id)
     save_data()
-    await interaction.response.send_message(f'✅ Canal de nivel configurado: {channel.mention}')
+    await interaction.response.send_message(f'✅ Canal de nivel configurado: {channel.mention}\n💡 Usa /config_notifications para más opciones')
     print(f'[Config] Canal de nivel configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='config_welcome_channel', description='Configura el canal para bienvenida de nuevos miembros')
+@bot.tree.command(name='config_welcome_channel', description='Configura el canal para bienvenida de nuevos miembros (Usa /config_notifications)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para bienvenida')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_welcome_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'welcome_channel', channel.id)
     save_data()
-    await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}')
+    await interaction.response.send_message(f'✅ Canal de bienvenida configurado: {channel.mention}\n💡 Usa /config_notifications para más opciones')
     print(f'[Config] Canal de bienvenida configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 # Sistema de Roles por Nivel
-@bot.tree.command(name='add_level_role', description='Agrega un rol que se asigna al alcanzar un nivel específico')
+@bot.tree.command(name='add_level_role', description='Agrega un rol que se asigna al alcanzar un nivel específico (Usa /config_level_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(level='Nivel requerido', role='Rol a asignar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_level_role(interaction: discord.Interaction, level: int, role: discord.Role):
@@ -2312,7 +2312,7 @@ async def add_level_role(interaction: discord.Interaction, level: int, role: dis
     await interaction.response.send_message(f'✅ Rol {role.mention} configurado para el nivel **{level}**')
     print(f'[Level Roles] Rol {role.name} configurado para nivel {level} en servidor {interaction.guild.name}')
 
-@bot.tree.command(name='remove_level_role', description='Elimina un rol de un nivel específico')
+@bot.tree.command(name='remove_level_role', description='Elimina un rol de un nivel específico (Usa /config_level_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(level='Nivel a eliminar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_level_role(interaction: discord.Interaction, level: int):
@@ -2332,7 +2332,7 @@ async def remove_level_role(interaction: discord.Interaction, level: int):
     await interaction.response.send_message(f'✅ Rol del nivel **{level}** eliminado')
     print(f'[Level Roles] Rol del nivel {level} eliminado en servidor {interaction.guild.name}')
 
-@bot.tree.command(name='list_level_roles', description='Lista todos los roles configurados por nivel')
+@bot.tree.command(name='list_level_roles', description='Lista todos los roles configurados por nivel (Usa /config_level_roles)', default_permissions=discord.Permissions(administrator=True))
 async def list_level_roles(interaction: discord.Interaction):
     server_id = str(interaction.guild.id)
 
@@ -2431,7 +2431,7 @@ async def server_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # Sistema de Roles Reaccionables
-@bot.tree.command(name='create_role_panel', description='Crea un panel de roles reaccionables')
+@bot.tree.command(name='create_role_panel', description='Crea un panel de roles reaccionables (Usa /config_reaction_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal donde crear el panel', title='Título del panel')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_role_panel(interaction: discord.Interaction, channel: discord.TextChannel, title: str = "🎭 Roles Reaccionables"):
@@ -2465,7 +2465,7 @@ async def create_role_panel(interaction: discord.Interaction, channel: discord.T
     await interaction.response.send_message(f'✅ Panel de roles creado en {channel.mention}. Usa /add_reaction_role para agregar roles.')
     print(f'[Reaction Roles] Panel creado en servidor {interaction.guild.name} (ID: {message.id})')
 
-@bot.tree.command(name='add_reaction_role', description='Agrega un rol reaccionable al panel')
+@bot.tree.command(name='add_reaction_role', description='Agrega un rol reaccionable al panel (Usa /config_reaction_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(emoji='Emoji a usar', role='Rol a asignar', description='Descripción del rol')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_reaction_role(interaction: discord.Interaction, emoji: str, role: discord.Role, description: str = ""):
@@ -2520,7 +2520,7 @@ async def add_reaction_role(interaction: discord.Interaction, emoji: str, role: 
     await interaction.response.send_message(f'✅ Rol {role.mention} agregado con emoji {emoji}')
     print(f'[Reaction Roles] Rol {role.name} agregado con emoji {emoji} en servidor {interaction.guild.name}')
 
-@bot.tree.command(name='list_reaction_roles', description='Lista todos los roles reaccionables configurados')
+@bot.tree.command(name='list_reaction_roles', description='Lista todos los roles reaccionables configurados (Usa /config_reaction_roles)', default_permissions=discord.Permissions(administrator=True))
 async def list_reaction_roles(interaction: discord.Interaction):
     server_id = str(interaction.guild.id)
 
@@ -2552,13 +2552,13 @@ async def list_reaction_roles(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets')
+@bot.tree.command(name='config_ticket_category', description='Configura la categoría para tickets (Usa /config_tickets)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(category='Categoría para tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_ticket_category(interaction: discord.Interaction, category: discord.CategoryChannel):
     set_server_setting(interaction.guild.id, 'ticket_category', category.id)
     save_data()
-    await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
+    await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}\n💡 Usa /config_tickets para más opciones')
     print(f'[Config] Categoría de tickets configurada en servidor {interaction.guild.name}: {category.name} (ID: {category.id})')
 
 # Vista avanzada de configuración de tickets
@@ -3055,7 +3055,7 @@ async def update_ranking_command(interaction: discord.Interaction):
     await update_ranking()
     await interaction.response.send_message('✅ Ranking actualizado manualmente')
 
-@bot.tree.command(name='config_stream_channel', description='Configura el canal para notificaciones de streams')
+@bot.tree.command(name='config_stream_channel', description='Configura el canal para notificaciones de streams (Usa /config_streams)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para notificaciones de streams')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_stream_channel(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -3064,7 +3064,7 @@ async def config_stream_channel(interaction: discord.Interaction, channel: disco
     await interaction.response.send_message(f'✅ Canal de notificaciones de streams configurado: {channel.mention}')
     print(f'[Config] Canal de streams configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='add_streamer', description='Agrega un streamer al monitoreo')
+@bot.tree.command(name='add_streamer', description='Agrega un streamer al monitoreo (Usa /config_streams)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_streamer(interaction: discord.Interaction, platform: str, username: str):
@@ -3088,7 +3088,7 @@ async def add_streamer(interaction: discord.Interaction, platform: str, username
     
     await interaction.response.send_message(f'✅ Streamer agregado: {username} ({platform})')
 
-@bot.tree.command(name='remove_streamer', description='Elimina un streamer del monitoreo')
+@bot.tree.command(name='remove_streamer', description='Elimina un streamer del monitoreo (Usa /config_streams)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(username='Nombre de usuario del streamer')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_streamer(interaction: discord.Interaction, username: str):
@@ -3139,18 +3139,18 @@ async def check_stream(interaction: discord.Interaction, platform: str, username
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al verificar stream: {e}')
 
-@bot.tree.command(name='config_add_banned_word', description='Agrega una palabra prohibida')
+@bot.tree.command(name='config_add_banned_word', description='Agrega una palabra prohibida (Usa /config_word_filter)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(word='Palabra a prohibir')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_add_banned_word(interaction: discord.Interaction, word: str):
     if word.lower() not in data['banned_words']:
         data['banned_words'].append(word.lower())
         save_data()
-        await interaction.response.send_message(f'✅ Palabra "{word}" agregada a la lista de prohibidas.')
+        await interaction.response.send_message(f'✅ Palabra "{word}" agregada a la lista de prohibidas.\n💡 Usa /config_word_filter para más opciones')
     else:
         await interaction.response.send_message(f'⚠️ La palabra "{word}" ya está en la lista.')
 
-@bot.tree.command(name='config_remove_banned_word', description='Elimina una palabra prohibida')
+@bot.tree.command(name='config_remove_banned_word', description='Elimina una palabra prohibida (Usa /config_word_filter)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(word='Palabra a eliminar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_remove_banned_word(interaction: discord.Interaction, word: str):
@@ -3223,7 +3223,7 @@ async def config_show(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='config_log_channel', description='Configura el canal para logs de auto-protección')
+@bot.tree.command(name='config_log_channel', description='Configura el canal para logs de auto-protección (Usa /config_logs)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para logs de seguridad')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_log_channel(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -3361,7 +3361,7 @@ async def config_auto_roles(interaction: discord.Interaction):
     await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
 
 # Comandos individuales de auto-roles (mantenidos para compatibilidad)
-@bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros (Usa /config_auto_roles)')
+@bot.tree.command(name='add_auto_role', description='Agrega un rol que se asignará automáticamente a nuevos miembros (Usa /config_auto_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(role='Rol a asignar automáticamente')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
@@ -3380,7 +3380,7 @@ async def add_auto_role(interaction: discord.Interaction, role: discord.Role):
     
     await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
 
-@bot.tree.command(name='remove_auto_role', description='Elimina un rol de los auto-roles (Usa /config_auto_roles)')
+@bot.tree.command(name='remove_auto_role', description='Elimina un rol de los auto-roles (Usa /config_auto_roles)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(role='Rol a eliminar de auto-roles')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def remove_auto_role(interaction: discord.Interaction, role: discord.Role):
@@ -3400,7 +3400,7 @@ async def remove_auto_role(interaction: discord.Interaction, role: discord.Role)
     
     await interaction.response.send_message(f'✅ Auto-rol eliminado: {role.mention}\n💡 Usa /config_auto_roles para más opciones', ephemeral=True)
 
-@bot.tree.command(name='list_auto_roles', description='Lista los roles que se asignan automáticamente')
+@bot.tree.command(name='list_auto_roles', description='Lista los roles que se asignan automáticamente (Usa /config_auto_roles)', default_permissions=discord.Permissions(administrator=True))
 async def list_auto_roles(interaction: discord.Interaction):
     auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
     
@@ -3418,7 +3418,7 @@ async def list_auto_roles(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='create_verification_message', description='Crea el mensaje de verificación en el canal configurado')
+@bot.tree.command(name='create_verification_message', description='Crea el mensaje de verificación en el canal configurado (Usa /config_verification)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_verification_message(interaction: discord.Interaction):
     # Usar configuración específica del servidor actual
@@ -3466,7 +3466,7 @@ async def create_verification_message(interaction: discord.Interaction):
         await interaction.response.send_message(f'❌ Error al crear mensaje de verificación: {e}', ephemeral=True)
         print(f'[Verificación] Error al crear mensaje: {e}')
 
-@bot.tree.command(name='manual_verify', description='Verifica manualmente a un usuario')
+@bot.tree.command(name='manual_verify', description='Verifica manualmente a un usuario (Usa /config_verification)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(member='Usuario a verificar')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def manual_verify(interaction: discord.Interaction, member: discord.Member):
@@ -5028,7 +5028,7 @@ async def config_giveaways(interaction: discord.Interaction):
     await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
 
 # Comandos individuales de sorteos (mantenidos para compatibilidad pero marcados como obsoletos)
-@bot.tree.command(name='config_giveaway_channel', description='Configura el canal para sorteos (Usa /config_giveaways)')
+@bot.tree.command(name='config_giveaway_channel', description='Configura el canal para sorteos (Usa /config_giveaways)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_giveaway_channel(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -5037,7 +5037,7 @@ async def config_giveaway_channel(interaction: discord.Interaction, channel: dis
     await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}\n💡 Usa /config_giveaways para más opciones', ephemeral=True)
     print(f'[Config] Canal de sorteos configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos (Usa /config_giveaways)')
+@bot.tree.command(name='config_announce_channel', description='Configura el canal para anuncios de sorteos (Usa /config_giveaways)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para anuncios de sorteos')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_announce_channel(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -5371,16 +5371,16 @@ async def test_log(interaction: discord.Interaction):
     await interaction.response.send_message('✅ Prueba de log enviada. Revisa el canal de logs.', ephemeral=True)
 
 # Sistema de Notificaciones
-@bot.tree.command(name='config_notifications_channel', description='Configura el canal de notificaciones')
+@bot.tree.command(name='config_notifications_channel', description='Configura el canal de notificaciones (Usa /config_notifications)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(channel='Canal para notificaciones')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_notifications_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     set_server_setting(interaction.guild.id, 'notifications_channel', channel.id)
     save_data()
-    await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}')
+    await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}\n💡 Usa /config_notifications para más opciones')
     print(f'[Config] Canal de notificaciones configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='config_notification_role', description='Configura el rol para un tipo de notificación')
+@bot.tree.command(name='config_notification_role', description='Configura el rol para un tipo de notificación (Usa /config_notifications)', default_permissions=discord.Permissions(administrator=True))
 @discord.app_commands.describe(
     notification_type='Tipo de notificación',
     role='Rol a asignar'
