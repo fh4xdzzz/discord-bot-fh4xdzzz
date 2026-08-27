@@ -2015,10 +2015,7 @@ class HelpView(discord.ui.View):
                 'emoji': '🔒',
                 'color': 0xFF6B6B,
                 'commands': [
-                    {'name': '/config_verification', 'desc': 'Configura el sistema de verificación'},
-                    {'name': '/create_verification_message', 'desc': 'Crea el mensaje de verificación'},
-                    {'name': '/manual_verify', 'desc': 'Verifica manualmente a un usuario'},
-                    {'name': '/check_verification_status', 'desc': 'Verifica el estado del sistema'}
+                    {'name': '/config_verification', 'desc': 'Configuración avanzada de verificación'}
                 ]
             },
             {
@@ -2036,29 +2033,19 @@ class HelpView(discord.ui.View):
                 ]
             },
             {
-                'title': '� Notificaciones',
+                'title': '🔔 Notificaciones',
                 'emoji': '🔔',
-                'color': 0x9b59b6,
+                'color': 0x3498db,
                 'commands': [
-                    {'name': '/config_notifications_channel', 'desc': 'Configura el canal de notificaciones'},
-                    {'name': '/config_notification_role', 'desc': 'Configura rol por tipo de notificación'},
-                    {'name': '/subscribe', 'desc': 'Suscríbete a notificaciones específicas'},
-                    {'name': '/unsubscribe', 'desc': 'Cancela suscripción a notificaciones'},
-                    {'name': '/my_subscriptions', 'desc': 'Muestra tus suscripciones actuales'},
-                    {'name': '/send_announcement', 'desc': 'Envía un anuncio al canal de notificaciones'},
-                    {'name': '/send_event', 'desc': 'Envía una notificación de evento'}
+                    {'name': '/config_notifications', 'desc': 'Configuración avanzada de notificaciones'}
                 ]
             },
             {
-                'title': '�📺 Notificaciones de Streams',
+                'title': '📺 Notificaciones de Streams',
                 'emoji': '📺',
                 'color': 0x9b59b6,
                 'commands': [
-                    {'name': '/config_stream_channel', 'desc': 'Configura el canal de streams'},
-                    {'name': '/add_streamer', 'desc': 'Agrega un streamer al monitoreo'},
-                    {'name': '/remove_streamer', 'desc': 'Elimina un streamer del monitoreo'},
-                    {'name': '/list_streamers', 'desc': 'Lista los streamers monitoreados'},
-                    {'name': '/check_stream', 'desc': 'Verifica si un streamer está en live'}
+                    {'name': '/config_streams', 'desc': 'Configuración avanzada de streams'}
                 ]
             },
             {
@@ -2066,9 +2053,7 @@ class HelpView(discord.ui.View):
                 'emoji': '🛡️',
                 'color': 0xE74C3C,
                 'commands': [
-                    {'name': '/warn', 'desc': 'Advierte a un usuario'},
-                    {'name': '/kick', 'desc': 'Expulsa a un usuario'},
-                    {'name': '/ban', 'desc': 'Banea a un usuario'}
+                    {'name': '/config_moderation', 'desc': 'Panel de herramientas de moderación'}
                 ]
             },
             {
@@ -2102,10 +2087,9 @@ class HelpView(discord.ui.View):
             {
                 'title': '🔒 Filtro de Palabras',
                 'emoji': '🔒',
-                'color': 0x2ecc71,
+                'color': 0x3498db,
                 'commands': [
-                    {'name': '/config_add_banned_word', 'desc': 'Agrega una palabra prohibida'},
-                    {'name': '/config_remove_banned_word', 'desc': 'Elimina una palabra prohibida'}
+                    {'name': '/config_word_filter', 'desc': 'Configuración avanzada del filtro de palabras'}
                 ]
             },
             {
@@ -2113,6 +2097,7 @@ class HelpView(discord.ui.View):
                 'emoji': '📜',
                 'color': 0x9b59b6,
                 'commands': [
+                    {'name': '/config_logs', 'desc': 'Configuración avanzada de logs'},
                     {'name': 'Logs de Voz', 'desc': 'Registra movimientos de voz con tiempo'},
                     {'name': 'Logs de Mensajes', 'desc': 'Registra mensajes enviados, editados y eliminados'},
                     {'name': 'Logs de Reacciones', 'desc': 'Registra todas las reacciones'},
@@ -3925,6 +3910,935 @@ class CreateReactionPanelModal(discord.ui.Modal, title='Crear Panel de Roles'):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def config_reaction_roles(interaction: discord.Interaction):
     view = ReactionRoleConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Verificación
+# Vista avanzada de configuración de verificación
+class VerificationConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        verification_channel_id = get_server_setting(int(self.server_id), 'verification_channel')
+        verification_role_id = get_server_setting(int(self.server_id), 'verification_role')
+        verification_message_id = get_server_setting(int(self.server_id), 'verification_message_id')
+        verified_users = get_server_setting(int(self.server_id), 'verified_users', [])
+        
+        embed = discord.Embed(
+            title='🔒 Configuración de Verificación',
+            description='Configura el sistema de verificación para nuevos miembros',
+            color=0xFF6B6B
+        )
+        
+        # Canal de verificación
+        if verification_channel_id:
+            channel = self.interaction.guild.get_channel(verification_channel_id)
+            embed.add_field(name='📁 Canal de Verificación', value=channel.mention if channel else 'No encontrado', inline=False)
+        else:
+            embed.add_field(name='📁 Canal de Verificación', value='❌ No configurado', inline=False)
+        
+        # Rol de verificación
+        if verification_role_id:
+            role = self.interaction.guild.get_role(verification_role_id)
+            embed.add_field(name='🎭 Rol de Verificación', value=role.mention if role else 'No encontrado', inline=False)
+        else:
+            embed.add_field(name='🎭 Rol de Verificación', value='❌ No configurado', inline=False)
+        
+        # Mensaje de verificación
+        embed.add_field(name='📋 Mensaje ID', value=str(verification_message_id) if verification_message_id else 'No configurado', inline=True)
+        
+        # Usuarios verificados
+        embed.add_field(name='👥 Usuarios Verificados', value=str(len(verified_users)), inline=True)
+        
+        embed.set_footer(text='Usa los botones para configurar la verificación')
+        return embed
+    
+    @discord.ui.button(label='📁 Canal', style=discord.ButtonStyle.primary)
+    async def set_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = VerificationChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🎭 Rol', style=discord.ButtonStyle.primary)
+    async def set_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = VerificationRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📢 Crear Mensaje', style=discord.ButtonStyle.success)
+    async def create_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = CreateVerificationMessageModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='👤 Verificar Manual', style=discord.ButtonStyle.secondary)
+    async def manual_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = ManualVerifyModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar canal de verificación
+class VerificationChannelModal(discord.ui.Modal, title='Configurar Canal de Verificación'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de verificación', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'verification_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de verificación desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'verification_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de verificación configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para configurar rol de verificación
+class VerificationRoleModal(discord.ui.Modal, title='Configurar Rol de Verificación'):
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol de verificación', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.role_id.value:
+            set_server_setting(interaction.guild.id, 'verification_role', None)
+            save_data()
+            await interaction.response.send_message('✅ Rol de verificación desactivado.', ephemeral=True)
+            return
+        
+        try:
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'verification_role', role_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Rol de verificación configurado: {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para crear mensaje de verificación
+class CreateVerificationMessageModal(discord.ui.Modal, title='Crear Mensaje de Verificación'):
+    async def on_submit(self, interaction: discord.Interaction):
+        server_id = str(interaction.guild.id)
+        verification_channel_id = get_server_setting(interaction.guild.id, 'verification_channel')
+        verification_role_id = get_server_setting(interaction.guild.id, 'verification_role')
+        
+        if not verification_channel_id or not verification_role_id:
+            await interaction.response.send_message('❌ Primero configura el canal y el rol de verificación.', ephemeral=True)
+            return
+        
+        channel = bot.get_channel(verification_channel_id)
+        if not channel:
+            await interaction.response.send_message('❌ Canal de verificación no encontrado', ephemeral=True)
+            return
+        
+        try:
+            embed = discord.Embed(
+                title='🔒 VERIFICACIÓN REQUERIDA',
+                description='Reacciona con ✅ para obtener acceso completo al servidor',
+                color=0xFF6B6B
+            )
+            
+            embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
+            embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ para obtener acceso', inline=False)
+            embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
+            embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
+            embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
+            embed.set_thumbnail(url=bot.user.display_avatar.url)
+            
+            message = await channel.send(embed=embed)
+            await message.add_reaction('✅')
+            
+            set_server_setting(interaction.guild.id, 'verification_message_id', message.id)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Mensaje de verificación creado en {channel.mention}', ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f'❌ Error al crear mensaje: {e}', ephemeral=True)
+
+# Modal para verificar manualmente
+class ManualVerifyModal(discord.ui.Modal, title='Verificar Manualmente'):
+    user_id = discord.ui.TextInput(label='ID del Usuario', placeholder='Ingresa el ID del usuario a verificar', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_id.value)
+            member = interaction.guild.get_member(user_id)
+            
+            if not member:
+                await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
+                return
+            
+            server_id = str(interaction.guild.id)
+            verification_role_id = get_server_setting(interaction.guild.id, 'verification_role')
+            
+            if not verification_role_id:
+                await interaction.response.send_message('❌ Rol de verificación no configurado.', ephemeral=True)
+                return
+            
+            try:
+                role = interaction.guild.get_role(verification_role_id)
+                if role:
+                    await member.add_roles(role)
+                    
+                    verified_users = get_server_setting(interaction.guild.id, 'verified_users', [])
+                    if str(user_id) not in verified_users:
+                        verified_users.append(str(user_id))
+                        set_server_setting(interaction.guild.id, 'verified_users', verified_users)
+                        save_data()
+                    
+                    await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente', ephemeral=True)
+                else:
+                    await interaction.response.send_message('❌ Rol de verificación no encontrado', ephemeral=True)
+            except Exception as e:
+                await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_verification', description='Configuración avanzada del sistema de verificación')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_verification(interaction: discord.Interaction):
+    view = VerificationConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Notificaciones
+# Vista avanzada de configuración de notificaciones
+class NotificationConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        notifications_channel_id = get_server_setting(int(self.server_id), 'notifications_channel')
+        notification_roles = get_server_setting(int(self.server_id), 'notification_roles', {})
+        
+        embed = discord.Embed(
+            title='🔔 Configuración de Notificaciones',
+            description='Configura el sistema de notificaciones del servidor',
+            color=0x3498db
+        )
+        
+        # Canal de notificaciones
+        if notifications_channel_id:
+            channel = self.interaction.guild.get_channel(notifications_channel_id)
+            embed.add_field(name='📁 Canal de Notificaciones', value=channel.mention if channel else 'No encontrado', inline=False)
+        else:
+            embed.add_field(name='📁 Canal de Notificaciones', value='❌ No configurado', inline=False)
+        
+        # Roles de notificación
+        if notification_roles:
+            role_list = []
+            for notif_type, role_id in notification_roles.items():
+                role = self.interaction.guild.get_role(role_id)
+                if role:
+                    role_list.append(f'{notif_type}: {role.mention}')
+            
+            if role_list:
+                embed.add_field(name='🎭 Roles de Notificación', value='\n'.join(role_list), inline=False)
+            else:
+                embed.add_field(name='🎭 Roles de Notificación', value='❌ No configurados (roles eliminados)', inline=False)
+        else:
+            embed.add_field(name='🎭 Roles de Notificación', value='❌ No configurados', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar las notificaciones')
+        return embed
+    
+    @discord.ui.button(label='📁 Canal', style=discord.ButtonStyle.primary)
+    async def set_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = NotificationChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🎭 Rol de Notificación', style=discord.ButtonStyle.primary)
+    async def set_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = NotificationRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📢 Enviar Anuncio', style=discord.ButtonStyle.success)
+    async def send_announcement(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = SendAnnouncementModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📅 Enviar Evento', style=discord.ButtonStyle.success)
+    async def send_event(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = SendEventModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar canal de notificaciones
+class NotificationChannelModal(discord.ui.Modal, title='Configurar Canal de Notificaciones'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de notificaciones', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'notifications_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de notificaciones desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'notifications_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para configurar rol de notificación
+class NotificationRoleModal(discord.ui.Modal, title='Configurar Rol de Notificación'):
+    notification_type = discord.ui.TextInput(label='Tipo (streams/giveaways/announcements/events)', placeholder='Ej: streams', required=True)
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        valid_types = ['streams', 'giveaways', 'announcements', 'events']
+        notification_type = self.notification_type.value.lower()
+        
+        if notification_type not in valid_types:
+            await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
+            return
+        
+        try:
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', {})
+            
+            if not notification_roles:
+                notification_roles = {}
+            
+            notification_roles[notification_type] = role_id
+            set_server_setting(interaction.guild.id, 'notification_roles', notification_roles)
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Rol de notificación para {notification_type} configurado: {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para enviar anuncio
+class SendAnnouncementModal(discord.ui.Modal, title='Enviar Anuncio'):
+    message = discord.ui.TextInput(label='Mensaje del Anuncio', placeholder='Escribe tu anuncio aquí', style=discord.TextStyle.paragraph, max_length=1000, required=True)
+    important = discord.ui.TextInput(label='¿Importante? (@everyone)', placeholder='Escribe "si" para mencionar @everyone', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        notifications_channel_id = get_server_setting(interaction.guild.id, 'notifications_channel')
+        
+        if not notifications_channel_id:
+            await interaction.response.send_message('❌ Canal de notificaciones no configurado', ephemeral=True)
+            return
+        
+        important = self.important.value.lower() in ['si', 'yes', 'true', '1']
+        
+        await send_notification(
+            guild=interaction.guild,
+            notification_type='announcements',
+            message=self.message.value,
+            color=0xFFD700,
+            mention_role=not important
+        )
+        
+        await interaction.response.send_message('✅ Anuncio enviado al canal de notificaciones', ephemeral=True)
+
+# Modal para enviar evento
+class SendEventModal(discord.ui.Modal, title='Enviar Evento'):
+    event_name = discord.ui.TextInput(label='Nombre del Evento', placeholder='Ej: Torneo de Valorant', max_length=100, required=True)
+    description = discord.ui.TextInput(label='Descripción', placeholder='Describe el evento', style=discord.TextStyle.paragraph, max_length=500, required=True)
+    date = discord.ui.TextInput(label='Fecha (DD/MM/YYYY)', placeholder='Ej: 25/12/2024', max_length=10, required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        notifications_channel_id = get_server_setting(interaction.guild.id, 'notifications_channel')
+        
+        if not notifications_channel_id:
+            await interaction.response.send_message('❌ Canal de notificaciones no configurado', ephemeral=True)
+            return
+        
+        message = f'**{self.event_name.value}**\n{self.description.value}\n📅 Fecha: {self.date.value}'
+        
+        await send_notification(
+            guild=interaction.guild,
+            notification_type='events',
+            message=message,
+            color=0x9b59b6
+        )
+        
+        await interaction.response.send_message('✅ Evento enviado al canal de notificaciones', ephemeral=True)
+
+@bot.tree.command(name='config_notifications', description='Configuración avanzada de notificaciones')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_notifications(interaction: discord.Interaction):
+    view = NotificationConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Streams
+# Vista avanzada de configuración de streams
+class StreamConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        stream_channel_id = get_server_setting(int(self.server_id), 'stream_channel')
+        streamers = get_server_setting(int(self.server_id), 'streamers', [])
+        
+        embed = discord.Embed(
+            title='📺 Configuración de Streams',
+            description='Configura el sistema de notificaciones de streams',
+            color=0x9b59b6
+        )
+        
+        # Canal de streams
+        if stream_channel_id:
+            channel = self.interaction.guild.get_channel(stream_channel_id)
+            embed.add_field(name='📁 Canal de Streams', value=channel.mention if channel else 'No encontrado', inline=False)
+        else:
+            embed.add_field(name='📁 Canal de Streams', value='❌ No configurado', inline=False)
+        
+        # Streamers monitoreados
+        if streamers:
+            streamer_list = []
+            for streamer in streamers:
+                streamer_list.append(f'{streamer["username"]} ({streamer["platform"]})')
+            
+            embed.add_field(name='📺 Streamers Monitoreados', value='\n'.join(streamer_list), inline=False)
+            embed.add_field(name='📊 Cantidad', value=f'{len(streamers)} streamer(s)', inline=True)
+        else:
+            embed.add_field(name='📺 Streamers Monitoreados', value='❌ No configurados', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar los streams')
+        return embed
+    
+    @discord.ui.button(label='📁 Canal', style=discord.ButtonStyle.primary)
+    async def set_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = StreamChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='➕ Agregar Streamer', style=discord.ButtonStyle.success)
+    async def add_streamer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AddStreamerModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🗑️ Eliminar Streamer', style=discord.ButtonStyle.danger)
+    async def remove_streamer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = RemoveStreamerModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Streamers', style=discord.ButtonStyle.secondary)
+    async def list_streamers(self, interaction: discord.Interaction, button: discord.ui.Button):
+        streamers = get_server_setting(interaction.guild.id, 'streamers', [])
+        
+        if not streamers:
+            await interaction.response.send_message('❌ No hay streamers monitoreados', ephemeral=True)
+            return
+        
+        description = '\n'.join([f'• {s["username"]} ({s["platform"]})' for s in streamers])
+        
+        embed = discord.Embed(
+            title='📺 Streamers Monitoreados',
+            description=description,
+            color=0x9b59b6
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar canal de streams
+class StreamChannelModal(discord.ui.Modal, title='Configurar Canal de Streams'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de streams', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'stream_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de streams desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'stream_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de streams configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para agregar streamer
+class AddStreamerModal(discord.ui.Modal, title='Agregar Streamer'):
+    username = discord.ui.TextInput(label='Nombre de Usuario', placeholder='Ej: ninja', required=True)
+    platform = discord.ui.TextInput(label='Plataforma (twitch/youtube)', placeholder='Ej: twitch', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        valid_platforms = ['twitch', 'youtube']
+        platform = self.platform.value.lower()
+        
+        if platform not in valid_platforms:
+            await interaction.response.send_message(f'❌ Plataforma inválida. Usa: {", ".join(valid_platforms)}', ephemeral=True)
+            return
+        
+        streamers = get_server_setting(interaction.guild.id, 'streamers', [])
+        
+        if not streamers:
+            streamers = []
+        
+        # Verificar si ya existe
+        for streamer in streamers:
+            if streamer['username'].lower() == self.username.value.lower() and streamer['platform'] == platform:
+                await interaction.response.send_message('⚠️ Este streamer ya está monitoreado.', ephemeral=True)
+                return
+        
+        streamers.append({
+            'username': self.username.value,
+            'platform': platform
+        })
+        
+        set_server_setting(interaction.guild.id, 'streamers', streamers)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Streamer agregado: {self.username.value} ({platform})', ephemeral=True)
+
+# Modal para eliminar streamer
+class RemoveStreamerModal(discord.ui.Modal, title='Eliminar Streamer'):
+    username = discord.ui.TextInput(label='Nombre de Usuario', placeholder='Ej: ninja', required=True)
+    platform = discord.ui.TextInput(label='Plataforma (twitch/youtube)', placeholder='Ej: twitch', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        valid_platforms = ['twitch', 'youtube']
+        platform = self.platform.value.lower()
+        
+        if platform not in valid_platforms:
+            await interaction.response.send_message(f'❌ Plataforma inválida. Usa: {", ".join(valid_platforms)}', ephemeral=True)
+            return
+        
+        streamers = get_server_setting(interaction.guild.id, 'streamers', [])
+        
+        if not streamers:
+            await interaction.response.send_message('❌ No hay streamers monitoreados.', ephemeral=True)
+            return
+        
+        # Buscar y eliminar
+        found = False
+        for i, streamer in enumerate(streamers):
+            if streamer['username'].lower() == self.username.value.lower() and streamer['platform'] == platform:
+                streamers.pop(i)
+                found = True
+                break
+        
+        if found:
+            set_server_setting(interaction.guild.id, 'streamers', streamers)
+            save_data()
+            await interaction.response.send_message(f'✅ Streamer eliminado: {self.username.value} ({platform})', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Streamer no encontrado en la lista.', ephemeral=True)
+
+@bot.tree.command(name='config_streams', description='Configuración avanzada de streams')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_streams(interaction: discord.Interaction):
+    view = StreamConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Moderación
+# Vista avanzada de configuración de moderación
+class ModerationConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener estadísticas de moderación
+        server_id = str(interaction.guild.id)
+        warns_count = 0
+        if 'servers' in data and server_id in data['servers'] and 'warns' in data['servers'][server_id]:
+            warns_count = sum(len(warns) for warns in data['servers'][server_id]['warns'].values())
+        
+        embed = discord.Embed(
+            title='🛡️ Panel de Moderación',
+            description='Herramientas de moderación del servidor',
+            color=0xE74C3C
+        )
+        
+        embed.add_field(name='⚠️ Advertencias Totales', value=str(warns_count), inline=True)
+        embed.add_field(name='👥 Miembros del Servidor', value=str(interaction.guild.member_count), inline=True)
+        embed.add_field(name='🎭 Roles del Servidor', value=str(len(interaction.guild.roles)), inline=True)
+        
+        embed.set_footer(text='Usa los botones para ejecutar acciones de moderación')
+        return embed
+    
+    @discord.ui.button(label='⚠️ Advertir', style=discord.ButtonStyle.primary)
+    async def warn_user(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = WarnModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='👢 Expulsar', style=discord.ButtonStyle.danger)
+    async def kick_user(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = KickModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔨 Banear', style=discord.ButtonStyle.danger)
+    async def ban_user(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = BanModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para advertir usuario
+class WarnModal(discord.ui.Modal, title='Advertir Usuario'):
+    user_id = discord.ui.TextInput(label='ID del Usuario', placeholder='Ingresa el ID del usuario', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_id.value)
+            member = interaction.guild.get_member(user_id)
+            
+            if not member:
+                await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
+                return
+            
+            server_id = str(interaction.guild.id)
+            
+            # Inicializar estructura de warns
+            if 'servers' not in data:
+                data['servers'] = {}
+            if server_id not in data['servers']:
+                data['servers'][server_id] = {}
+            if 'warns' not in data['servers'][server_id]:
+                data['servers'][server_id]['warns'] = {}
+            
+            if str(user_id) not in data['servers'][server_id]['warns']:
+                data['servers'][server_id]['warns'][str(user_id)] = []
+            
+            data['servers'][server_id]['warns'][str(user_id)].append({
+                'reason': 'Advertencia',
+                'moderator': str(interaction.user.id),
+                'date': datetime.now().isoformat()
+            })
+            save_data()
+            
+            # Log de advertencia
+            await send_log(
+                guild=interaction.guild,
+                title='Advertencia Emitida',
+                description=f'{interaction.user.mention} ha advertido a {member.mention}',
+                color=0xFFA500,
+                fields=[
+                    {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
+                    {'name': 'Usuario advertido', 'value': member.name, 'inline': True},
+                    {'name': 'Total advertencias', 'value': str(len(data['servers'][server_id]['warns'][str(user_id)])), 'inline': True}
+                ],
+                author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+            )
+            
+            await interaction.response.send_message(f'⚠️ {member.mention} ha sido advertido. Total: {len(data["servers"][server_id]["warns"][str(user_id)])}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para expulsar usuario
+class KickModal(discord.ui.Modal, title='Expulsar Usuario'):
+    user_id = discord.ui.TextInput(label='ID del Usuario', placeholder='Ingresa el ID del usuario', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_id.value)
+            member = interaction.guild.get_member(user_id)
+            
+            if not member:
+                await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
+                return
+            
+            try:
+                await member.kick(reason='Kick por moderador')
+                
+                # Log de kick
+                await send_log(
+                    guild=interaction.guild,
+                    title='Usuario Expulsado',
+                    description=f'{interaction.user.mention} ha expulsado a {member.mention}',
+                    color=0xE74C3C,
+                    fields=[
+                        {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
+                        {'name': 'Usuario expulsado', 'value': member.name, 'inline': True},
+                        {'name': 'ID', 'value': str(member.id), 'inline': True}
+                    ],
+                    author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+                )
+                
+                await interaction.response.send_message(f'👢 {member.name} ha sido expulsado.', ephemeral=True)
+            except Exception as e:
+                await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para banear usuario
+class BanModal(discord.ui.Modal, title='Banear Usuario'):
+    user_id = discord.ui.TextInput(label='ID del Usuario', placeholder='Ingresa el ID del usuario', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_id.value)
+            member = interaction.guild.get_member(user_id)
+            
+            if not member:
+                await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
+                return
+            
+            try:
+                await member.ban(reason='Ban por moderador')
+                
+                # Log de ban
+                await send_log(
+                    guild=interaction.guild,
+                    title='Usuario Baneado',
+                    description=f'{interaction.user.mention} ha baneado a {member.mention}',
+                    color=0xE74C3C,
+                    fields=[
+                        {'name': 'Moderador', 'value': interaction.user.name, 'inline': True},
+                        {'name': 'Usuario baneado', 'value': member.name, 'inline': True},
+                        {'name': 'ID', 'value': str(member.id), 'inline': True}
+                    ],
+                    author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
+                )
+                
+                await interaction.response.send_message(f'🔨 {member.name} ha sido baneado.', ephemeral=True)
+            except Exception as e:
+                await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_moderation', description='Panel de herramientas de moderación')
+@discord.app_commands.checks.has_permissions(kick_members=True)
+async def config_moderation(interaction: discord.Interaction):
+    view = ModerationConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Filtro de Palabras
+# Vista avanzada de configuración de filtro de palabras
+class WordFilterConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        banned_words = data.get('banned_words', [])
+        
+        embed = discord.Embed(
+            title='🔒 Configuración de Filtro de Palabras',
+            description='Configura las palabras prohibidas en el servidor',
+            color=0x3498db
+        )
+        
+        # Palabras prohibidas
+        if banned_words:
+            embed.add_field(name='🚫 Palabras Prohibidas', value=f'{len(banned_words)} palabra(s)', inline=True)
+            # Mostrar primeras 10 palabras
+            words_preview = ', '.join(banned_words[:10])
+            if len(banned_words) > 10:
+                words_preview += f' y {len(banned_words) - 10} más...'
+            embed.add_field(name='📋 Vista Previa', value=words_preview or 'No hay palabras', inline=False)
+        else:
+            embed.add_field(name='🚫 Palabras Prohibidas', value='❌ No configuradas', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar el filtro de palabras')
+        return embed
+    
+    @discord.ui.button(label='➕ Agregar Palabra', style=discord.ButtonStyle.success)
+    async def add_word(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AddBannedWordModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🗑️ Eliminar Palabra', style=discord.ButtonStyle.danger)
+    async def remove_word(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = RemoveBannedWordModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Ver Palabras', style=discord.ButtonStyle.secondary)
+    async def list_words(self, interaction: discord.Interaction, button: discord.ui.Button):
+        banned_words = data.get('banned_words', [])
+        
+        if not banned_words:
+            await interaction.response.send_message('❌ No hay palabras prohibidas configuradas', ephemeral=True)
+            return
+        
+        description = '\n'.join([f'• {word}' for word in banned_words])
+        
+        embed = discord.Embed(
+            title='🚫 Palabras Prohibidas',
+            description=description,
+            color=0x3498db
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para agregar palabra prohibida
+class AddBannedWordModal(discord.ui.Modal, title='Agregar Palabra Prohibida'):
+    word = discord.ui.TextInput(label='Palabra', placeholder='Ingresa la palabra a prohibir', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        word = self.word.value.lower()
+        
+        if word not in data['banned_words']:
+            data['banned_words'].append(word)
+            save_data()
+            await interaction.response.send_message(f'✅ Palabra "{word}" agregada a la lista de prohibidas.', ephemeral=True)
+        else:
+            await interaction.response.send_message(f'⚠️ La palabra "{word}" ya está en la lista.', ephemeral=True)
+
+# Modal para eliminar palabra prohibida
+class RemoveBannedWordModal(discord.ui.Modal, title='Eliminar Palabra Prohibida'):
+    word = discord.ui.TextInput(label='Palabra', placeholder='Ingresa la palabra a eliminar', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        word = self.word.value.lower()
+        
+        if word in data['banned_words']:
+            data['banned_words'].remove(word)
+            save_data()
+            await interaction.response.send_message(f'✅ Palabra "{word}" eliminada de la lista de prohibidas.', ephemeral=True)
+        else:
+            await interaction.response.send_message(f'⚠️ La palabra "{word}" no está en la lista.', ephemeral=True)
+
+@bot.tree.command(name='config_word_filter', description='Configuración avanzada del filtro de palabras')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_word_filter(interaction: discord.Interaction):
+    view = WordFilterConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
+
+# Sistema de Logs
+# Vista avanzada de configuración de logs
+class LogConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        log_channel_id = get_server_setting(int(self.server_id), 'log_channel')
+        
+        embed = discord.Embed(
+            title='📜 Configuración de Logs',
+            description='Configura el sistema de logs del servidor',
+            color=0x9b59b6
+        )
+        
+        # Canal de logs
+        if log_channel_id:
+            channel = self.interaction.guild.get_channel(log_channel_id)
+            embed.add_field(name='📁 Canal de Logs', value=channel.mention if channel else 'No encontrado', inline=False)
+        else:
+            embed.add_field(name='📁 Canal de Logs', value='❌ No configurado', inline=False)
+        
+        # Tipos de logs activos
+        embed.add_field(name='📋 Logs Activos', value='✅ Mensajes\n✅ Reacciones\n✅ Voz\n✅ Moderación\n✅ Verificación\n✅ Roles', inline=False)
+        
+        embed.set_footer(text='Usa los botones para configurar los logs')
+        return embed
+    
+    @discord.ui.button(label='📁 Canal de Logs', style=discord.ButtonStyle.primary)
+    async def set_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = LogChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar canal de logs
+class LogChannelModal(discord.ui.Modal, title='Configurar Canal de Logs'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de logs', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'log_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de logs desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'log_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_logs', description='Configuración avanzada de logs')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_logs(interaction: discord.Interaction):
+    view = LogConfigView(interaction)
     await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
 
 # Sistema de Sorteos
