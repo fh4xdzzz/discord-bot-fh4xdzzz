@@ -3443,6 +3443,9 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         await interaction.response.send_message('❌ Canal de sorteos no encontrado', ephemeral=True)
         return
     
+    # Defer la respuesta para evitar timeout
+    await interaction.response.defer()
+    
     try:
         # Inicializar estructura de sorteos del servidor
         if 'servers' not in data:
@@ -3487,7 +3490,7 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         }
         save_data()
         
-        await interaction.response.send_message(f'✅ Sorteo creado en {channel.mention}. Terminará a las {end_time.strftime("%H:%M")}')
+        await interaction.followup.send(f'✅ Sorteo creado en {channel.mention}. Terminará a las {end_time.strftime("%H:%M")}')
         
         # Enviar notificación al canal de anuncios si está configurado
         if giveaway_announcement_channel_id:
@@ -3516,7 +3519,7 @@ async def create_giveaway(interaction: discord.Interaction, prize: str, duration
         bot.loop.create_task(end_giveaway_after_delay(giveaway_id, duration * 60, server_id))
         
     except Exception as e:
-        await interaction.response.send_message(f'❌ Error al crear sorteo: {e}', ephemeral=True)
+        await interaction.followup.send(f'❌ Error al crear sorteo: {e}', ephemeral=True)
 
 async def end_giveaway_after_delay(giveaway_id, delay, server_id=None):
     await asyncio.sleep(delay)
@@ -4297,7 +4300,10 @@ async def update_giveaway_timers():
             if 'giveaways' not in server_data:
                 continue
             
-            for giveaway_id, giveaway in server_data['giveaways'].items():
+            # Crear una copia de los sorteos para evitar error de iteración
+            giveaways_to_remove = []
+            
+            for giveaway_id, giveaway in list(server_data['giveaways'].items()):
                 try:
                     end_time = datetime.fromisoformat(giveaway['end_time'])
                     time_left = end_time - datetime.now()
@@ -4334,14 +4340,20 @@ async def update_giveaway_timers():
                                 await message.edit(embed=embed)
                                 print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante')
                             except discord.NotFound:
-                                # El mensaje fue eliminado, eliminar el sorteo de la base de datos
-                                print(f'[Sorteo] Mensaje eliminado, eliminando sorteo {giveaway_id} de la base de datos')
-                                del data['servers'][server_id]['giveaways'][giveaway_id]
-                                save_data()
+                                # El mensaje fue eliminado, marcar para eliminar
+                                print(f'[Sorteo] Mensaje eliminado, marcando sorteo {giveaway_id} para eliminar')
+                                giveaways_to_remove.append(giveaway_id)
                             except Exception as e:
                                 print(f'[Sorteo] Error al actualizar tiempo: {e}')
                 except Exception as e:
                     print(f'[Sorteo] Error al procesar sorteo {giveaway_id}: {e}')
+            
+            # Eliminar sorteos marcados después de la iteración
+            for giveaway_id in giveaways_to_remove:
+                if giveaway_id in data['servers'][server_id]['giveaways']:
+                    del data['servers'][server_id]['giveaways'][giveaway_id]
+                    save_data()
+                    print(f'[Sorteo] Sorteo {giveaway_id} eliminado de la base de datos')
 
 # Servidor web Flask para SparkedHost
 app = Flask(__name__)
