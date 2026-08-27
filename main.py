@@ -2693,21 +2693,17 @@ class TicketConfigView(discord.ui.View):
 
 # Modal para configurar rol de soporte
 class TicketSupportRoleModal(discord.ui.Modal, title='Configurar Rol de Soporte'):
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol de soporte', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol de soporte', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'ticket_support_role', role_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Rol de soporte configurado: {role.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        role = self.role.values[0]
+        if not role:
+            await interaction.response.send_message('❌ Rol no encontrado.', ephemeral=True)
+            return
+        
+        set_server_setting(interaction.guild.id, 'ticket_support_role', role.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Rol de soporte configurado: {role.mention}', ephemeral=True)
 
 # Modal para configurar mensaje de bienvenida
 class TicketWelcomeMessageModal(discord.ui.Modal, title='Configurar Mensaje de Bienvenida'):
@@ -2737,51 +2733,45 @@ class TicketMaxTicketsModal(discord.ui.Modal, title='Configurar Límite de Ticke
 
 # Modal para configurar canal de logs
 class TicketLogChannelModal(discord.ui.Modal, title='Configurar Canal de Logs'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de logs', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de logs',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'ticket_log_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de logs desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'ticket_log_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'ticket_log_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
 
 # Modal para configurar canal del panel
 class TicketPanelChannelModal(discord.ui.Modal, title='Configurar Canal del Panel'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal del panel', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal del panel',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'ticket_panel_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal del panel desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'ticket_panel_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal del panel configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'ticket_panel_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal del panel configurado: {channel.mention}', ephemeral=True)
 
 # Modal para crear botón personalizado
 class TicketCustomButtonModal(discord.ui.Modal, title='Crear Botón Personalizado'):
@@ -3321,57 +3311,48 @@ class AutoRoleConfigView(discord.ui.View):
 
 # Modal para agregar auto-rol
 class AddAutoRoleModal(discord.ui.Modal, title='Agregar Auto-Rol'):
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            
-            if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
-            
-            if not auto_roles:
-                auto_roles = []
-            
-            if role_id in auto_roles:
-                await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.', ephemeral=True)
-                return
-            
-            auto_roles.append(role_id)
-            set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
-            save_data()
-            
-            await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        role = self.role.values[0]
+        
+        if not role:
+            await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+            return
+        
+        auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+        
+        if not auto_roles:
+            auto_roles = []
+        
+        if role.id in auto_roles:
+            await interaction.response.send_message('⚠️ Este rol ya está configurado como auto-rol.', ephemeral=True)
+            return
+        
+        auto_roles.append(role.id)
+        set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Auto-rol agregado: {role.mention}', ephemeral=True)
 
 # Modal para eliminar auto-rol
 class RemoveAutoRoleModal(discord.ui.Modal, title='Eliminar Auto-Rol'):
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol a eliminar', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol a eliminar', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            
-            auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
-            
-            if not auto_roles or role_id not in auto_roles:
-                await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.', ephemeral=True)
-                return
-            
-            auto_roles.remove(role_id)
-            set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
-            save_data()
-            
-            role_name = role.name if role else f'ID {role_id}'
-            await interaction.response.send_message(f'✅ Auto-rol eliminado: {role_name}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        role = self.role.values[0]
+        
+        auto_roles = get_server_setting(interaction.guild.id, 'auto_roles', [])
+        
+        if not auto_roles or role.id not in auto_roles:
+            await interaction.response.send_message('❌ Este rol no está configurado como auto-rol.', ephemeral=True)
+            return
+        
+        auto_roles.remove(role.id)
+        set_server_setting(interaction.guild.id, 'auto_roles', auto_roles)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Auto-rol eliminado: {role.mention}', ephemeral=True)
 
 @bot.tree.command(name='config_auto_roles', description='Configuración avanzada de auto-roles')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -3646,16 +3627,15 @@ class LevelRoleConfigView(discord.ui.View):
 # Modal para agregar rol por nivel
 class AddLevelRoleModal(discord.ui.Modal, title='Agregar Rol por Nivel'):
     level = discord.ui.TextInput(label='Nivel', placeholder='Ej: 5', max_length=5, required=True)
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
             level = int(self.level.value)
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
+            role = self.role.values[0]
             
             if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                await interaction.response.send_message('❌ Rol no encontrado.', ephemeral=True)
                 return
             
             if level < 1:
@@ -3671,13 +3651,13 @@ class AddLevelRoleModal(discord.ui.Modal, title='Agregar Rol por Nivel'):
                 await interaction.response.send_message('⚠️ Este nivel ya tiene un rol configurado.', ephemeral=True)
                 return
             
-            level_roles[str(level)] = role_id
+            level_roles[str(level)] = role.id
             set_server_setting(interaction.guild.id, 'level_roles', level_roles)
             save_data()
             
             await interaction.response.send_message(f'✅ Rol por nivel agregado: Nivel {level} → {role.mention}', ephemeral=True)
         except ValueError:
-            await interaction.response.send_message('❌ Valores inválidos. El nivel y el ID deben ser números.', ephemeral=True)
+            await interaction.response.send_message('❌ Valor inválido. El nivel debe ser un número.', ephemeral=True)
 
 # Modal para eliminar rol por nivel
 class RemoveLevelRoleModal(discord.ui.Modal, title='Eliminar Rol por Nivel'):
@@ -3795,34 +3775,30 @@ class ReactionRoleConfigView(discord.ui.View):
 # Modal para agregar rol reaccionable
 class AddReactionRoleModal(discord.ui.Modal, title='Agregar Rol Reaccionable'):
     emoji = discord.ui.TextInput(label='Emoji', placeholder='Ej: 🎉', max_length=10, required=True)
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            emoji = self.emoji.value
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            
-            if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
-            
-            if not reaction_roles:
-                reaction_roles = {}
-            
-            if emoji in reaction_roles:
-                await interaction.response.send_message('⚠️ Este emoji ya tiene un rol configurado.', ephemeral=True)
-                return
-            
-            reaction_roles[emoji] = role_id
-            set_server_setting(interaction.guild.id, 'reaction_roles', reaction_roles)
-            save_data()
-            
-            await interaction.response.send_message(f'✅ Rol reaccionable agregado: {emoji} → {role.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        emoji = self.emoji.value
+        role = self.role.values[0]
+        
+        if not role:
+            await interaction.response.send_message('❌ Rol no encontrado.', ephemeral=True)
+            return
+        
+        reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+        
+        if not reaction_roles:
+            reaction_roles = {}
+        
+        if emoji in reaction_roles:
+            await interaction.response.send_message('⚠️ Este emoji ya tiene un rol configurado.', ephemeral=True)
+            return
+        
+        reaction_roles[emoji] = role.id
+        set_server_setting(interaction.guild.id, 'reaction_roles', reaction_roles)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Rol reaccionable agregado: {emoji} → {role.mention}', ephemeral=True)
 
 # Modal para eliminar rol reaccionable
 class RemoveReactionRoleModal(discord.ui.Modal, title='Eliminar Rol Reaccionable'):
@@ -3849,47 +3825,48 @@ class RemoveReactionRoleModal(discord.ui.Modal, title='Eliminar Rol Reaccionable
 
 # Modal para crear panel de roles reaccionables
 class CreateReactionPanelModal(discord.ui.Modal, title='Crear Panel de Roles'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Canal donde enviar el panel', required=True)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Canal donde enviar el panel',
+        min_values=1,
+        max_values=1
+    )
     message = discord.ui.TextInput(label='Mensaje del Panel', placeholder='Reacciona para obtener roles', default='Reacciona a este mensaje para obtener roles:', style=discord.TextStyle.paragraph, max_length=500, required=False)
     
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
-            
-            if not reaction_roles:
-                await interaction.response.send_message('❌ No hay roles reaccionables configurados. Primero agrega roles.', ephemeral=True)
-                return
-            
-            embed = discord.Embed(
-                title='🎭 Roles Reaccionables',
-                description=self.message.value or 'Reacciona a este mensaje para obtener roles:',
-                color=0x9b59b6
-            )
-            
-            for emoji, role_id in reaction_roles.items():
-                role = interaction.guild.get_role(role_id)
-                if role:
-                    embed.add_field(name=emoji, value=role.mention, inline=True)
-            
-            message = await channel.send(embed=embed)
-            
-            # Agregar reacciones
-            for emoji in reaction_roles.keys():
-                try:
-                    await message.add_reaction(emoji)
-                except:
-                    pass
-            
-            await interaction.response.send_message(f'✅ Panel de roles enviado a {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        
+        if not channel:
+            await interaction.response.send_message('❌ Canal no encontrado.', ephemeral=True)
+            return
+        
+        reaction_roles = get_server_setting(interaction.guild.id, 'reaction_roles', {})
+        
+        if not reaction_roles:
+            await interaction.response.send_message('❌ No hay roles reaccionables configurados. Primero agrega roles.', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='🎭 Roles Reaccionables',
+            description=self.message.value or 'Reacciona a este mensaje para obtener roles:',
+            color=0x9b59b6
+        )
+        
+        for emoji, role_id in reaction_roles.items():
+            role = interaction.guild.get_role(role_id)
+            if role:
+                embed.add_field(name=emoji, value=role.mention, inline=True)
+        
+        message = await channel.send(embed=embed)
+        
+        # Agregar reacciones
+        for emoji in reaction_roles.keys():
+            try:
+                await message.add_reaction(emoji)
+            except:
+                pass
+        
+        await interaction.response.send_message(f'✅ Panel de roles enviado a {channel.mention}', ephemeral=True)
 
 @bot.tree.command(name='config_reaction_roles', description='Configuración avanzada de roles reaccionables')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -3972,51 +3949,44 @@ class VerificationConfigView(discord.ui.View):
 
 # Modal para configurar canal de verificación
 class VerificationChannelModal(discord.ui.Modal, title='Configurar Canal de Verificación'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de verificación', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de verificación',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'verification_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de verificación desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'verification_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de verificación configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'verification_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de verificación configurado: {channel.mention}', ephemeral=True)
 
 # Modal para configurar rol de verificación
 class VerificationRoleModal(discord.ui.Modal, title='Configurar Rol de Verificación'):
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol de verificación', required=False)
+    role = discord.ui.RoleSelect(
+        placeholder='Selecciona el rol de verificación',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.role_id.value:
+        if not self.role.values:
             set_server_setting(interaction.guild.id, 'verification_role', None)
             save_data()
             await interaction.response.send_message('✅ Rol de verificación desactivado.', ephemeral=True)
             return
         
-        try:
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'verification_role', role_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Rol de verificación configurado: {role.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        role = self.role.values[0]
+        set_server_setting(interaction.guild.id, 'verification_role', role.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Rol de verificación configurado: {role.mention}', ephemeral=True)
 
 # Modal para crear mensaje de verificación
 class CreateVerificationMessageModal(discord.ui.Modal, title='Crear Mensaje de Verificación'):
@@ -4060,42 +4030,38 @@ class CreateVerificationMessageModal(discord.ui.Modal, title='Crear Mensaje de V
 
 # Modal para verificar manualmente
 class ManualVerifyModal(discord.ui.Modal, title='Verificar Manualmente'):
-    user_id = discord.ui.TextInput(label='ID del Usuario', placeholder='Ingresa el ID del usuario a verificar', required=True)
+    user = discord.ui.UserSelect(placeholder='Selecciona el usuario a verificar', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
+        member = self.user.values[0]
+        
+        if not member:
+            await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
+            return
+        
+        server_id = str(interaction.guild.id)
+        verification_role_id = get_server_setting(interaction.guild.id, 'verification_role')
+        
+        if not verification_role_id:
+            await interaction.response.send_message('❌ Rol de verificación no configurado.', ephemeral=True)
+            return
+        
         try:
-            user_id = int(self.user_id.value)
-            member = interaction.guild.get_member(user_id)
-            
-            if not member:
-                await interaction.response.send_message('❌ Usuario no encontrado en el servidor.', ephemeral=True)
-                return
-            
-            server_id = str(interaction.guild.id)
-            verification_role_id = get_server_setting(interaction.guild.id, 'verification_role')
-            
-            if not verification_role_id:
-                await interaction.response.send_message('❌ Rol de verificación no configurado.', ephemeral=True)
-                return
-            
-            try:
-                role = interaction.guild.get_role(verification_role_id)
-                if role:
-                    await member.add_roles(role)
-                    
-                    verified_users = get_server_setting(interaction.guild.id, 'verified_users', [])
-                    if str(user_id) not in verified_users:
-                        verified_users.append(str(user_id))
-                        set_server_setting(interaction.guild.id, 'verified_users', verified_users)
-                        save_data()
-                    
-                    await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente', ephemeral=True)
-                else:
-                    await interaction.response.send_message('❌ Rol de verificación no encontrado', ephemeral=True)
-            except Exception as e:
-                await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+            role = interaction.guild.get_role(verification_role_id)
+            if role:
+                await member.add_roles(role)
+                
+                verified_users = get_server_setting(interaction.guild.id, 'verified_users', [])
+                if str(member.id) not in verified_users:
+                    verified_users.append(str(member.id))
+                    set_server_setting(interaction.guild.id, 'verified_users', verified_users)
+                    save_data()
+                
+                await interaction.response.send_message(f'✅ {member.mention} ha sido verificado manualmente', ephemeral=True)
+            else:
+                await interaction.response.send_message('❌ Rol de verificación no encontrado', ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_verification', description='Configuración avanzada del sistema de verificación')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -4178,32 +4144,29 @@ class NotificationConfigView(discord.ui.View):
 
 # Modal para configurar canal de notificaciones
 class NotificationChannelModal(discord.ui.Modal, title='Configurar Canal de Notificaciones'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de notificaciones', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de notificaciones',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'notifications_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de notificaciones desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'notifications_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'notifications_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de notificaciones configurado: {channel.mention}', ephemeral=True)
 
 # Modal para configurar rol de notificación
 class NotificationRoleModal(discord.ui.Modal, title='Configurar Rol de Notificación'):
     notification_type = discord.ui.TextInput(label='Tipo (streams/giveaways/announcements/events)', placeholder='Ej: streams', required=True)
-    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol', required=True)
+    role = discord.ui.RoleSelect(placeholder='Selecciona el rol', min_values=1, max_values=1)
     
     async def on_submit(self, interaction: discord.Interaction):
         valid_types = ['streams', 'giveaways', 'announcements', 'events']
@@ -4213,25 +4176,18 @@ class NotificationRoleModal(discord.ui.Modal, title='Configurar Rol de Notificac
             await interaction.response.send_message(f'❌ Tipo inválido. Usa: {", ".join(valid_types)}', ephemeral=True)
             return
         
-        try:
-            role_id = int(self.role_id.value)
-            role = interaction.guild.get_role(role_id)
-            if not role:
-                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', {})
-            
-            if not notification_roles:
-                notification_roles = {}
-            
-            notification_roles[notification_type] = role_id
-            set_server_setting(interaction.guild.id, 'notification_roles', notification_roles)
-            save_data()
-            
-            await interaction.response.send_message(f'✅ Rol de notificación para {notification_type} configurado: {role.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        role = self.role.values[0]
+        
+        notification_roles = get_server_setting(interaction.guild.id, 'notification_roles', {})
+        
+        if not notification_roles:
+            notification_roles = {}
+        
+        notification_roles[notification_type] = role.id
+        set_server_setting(interaction.guild.id, 'notification_roles', notification_roles)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Rol de notificación para {notification_type} configurado: {role.mention}', ephemeral=True)
 
 # Modal para enviar anuncio
 class SendAnnouncementModal(discord.ui.Modal, title='Enviar Anuncio'):
@@ -4371,27 +4327,24 @@ class StreamConfigView(discord.ui.View):
 
 # Modal para configurar canal de streams
 class StreamChannelModal(discord.ui.Modal, title='Configurar Canal de Streams'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de streams', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de streams',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'stream_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de streams desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'stream_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de streams configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'stream_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de streams configurado: {channel.mention}', ephemeral=True)
 
 # Modal para agregar streamer
 class AddStreamerModal(discord.ui.Modal, title='Agregar Streamer'):
@@ -4798,27 +4751,24 @@ class LogConfigView(discord.ui.View):
 
 # Modal para configurar canal de logs
 class LogChannelModal(discord.ui.Modal, title='Configurar Canal de Logs'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de logs', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de logs',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'log_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de logs desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'log_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'log_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
 
 @bot.tree.command(name='config_logs', description='Configuración avanzada de logs')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -4928,51 +4878,45 @@ class GiveawayConfigView(discord.ui.View):
 
 # Modal para configurar canal de sorteos
 class GiveawayChannelModal(discord.ui.Modal, title='Configurar Canal de Sorteos'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de sorteos', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de sorteos',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'giveaway_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de sorteos desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'giveaway_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'giveaway_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de sorteos configurado: {channel.mention}', ephemeral=True)
 
 # Modal para configurar canal de anuncios
 class AnnouncementChannelModal(discord.ui.Modal, title='Configurar Canal de Anuncios'):
-    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de anuncios', required=False)
+    channel = discord.ui.ChannelSelect(
+        channel_types=[discord.ChannelType.text],
+        placeholder='Selecciona el canal de anuncios',
+        min_values=0,
+        max_values=1
+    )
     
     async def on_submit(self, interaction: discord.Interaction):
-        if not self.channel_id.value:
+        if not self.channel.values:
             set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', None)
             save_data()
             await interaction.response.send_message('✅ Canal de anuncios desactivado.', ephemeral=True)
             return
         
-        try:
-            channel_id = int(self.channel_id.value)
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
-                return
-            
-            set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel_id)
-            save_data()
-            await interaction.response.send_message(f'✅ Canal de anuncios configurado: {channel.mention}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+        channel = self.channel.values[0]
+        set_server_setting(interaction.guild.id, 'giveaway_announcement_channel', channel.id)
+        save_data()
+        await interaction.response.send_message(f'✅ Canal de anuncios configurado: {channel.mention}', ephemeral=True)
 
 # Modal para crear sorteo
 class CreateGiveawayModal(discord.ui.Modal, title='Crear Sorteo'):
