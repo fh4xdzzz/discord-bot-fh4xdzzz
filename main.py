@@ -1329,16 +1329,28 @@ async def on_raw_reaction_remove(payload):
 
     # Sorteos (verificar en todos los servidores)
     server_id = str(payload.guild_id)
+    print(f'[DEBUG] Reacción recibida - Servidor: {server_id}, Mensaje: {payload.message_id}, Emoji: {payload.emoji}, Usuario: {payload.user_id}')
+    
     if 'servers' in data and server_id in data['servers'] and 'giveaways' in data['servers'][server_id]:
+        print(f'[DEBUG] Servidor encontrado en data, sorteos disponibles: {list(data["servers"][server_id]["giveaways"].keys())}')
+        
         if str(payload.message_id) in data['servers'][server_id]['giveaways']:
+            print(f'[DEBUG] Mensaje coincide con un sorteo activo')
             try:
                 giveaway = data['servers'][server_id]['giveaways'][str(payload.message_id)]
+                print(f'[DEBUG] Sorteo encontrado: {giveaway["prize"]}')
+                
                 if str(payload.emoji) == '🎉':
+                    print(f'[DEBUG] Emoji es 🎉, procesando participación')
                     guild = bot.get_guild(payload.guild_id)
                     member = guild.get_member(payload.user_id)
                     
+                    print(f'[DEBUG] Miembro: {member}, es bot: {member.bot if member else "N/A"}')
+                    
                     if member and not member.bot:
                         user_id = str(member.id)
+                        print(f'[DEBUG] Usuario ID: {user_id}, ya participante: {user_id in giveaway["participants"]}')
+                        
                         if user_id not in giveaway['participants']:
                             giveaway['participants'].append(user_id)
                             data['servers'][server_id]['giveaways'][str(payload.message_id)] = giveaway
@@ -1348,18 +1360,24 @@ async def on_raw_reaction_remove(payload):
                             # Actualizar el embed del sorteo con el nuevo contador
                             try:
                                 channel = bot.get_channel(giveaway['channel_id'])
+                                print(f'[DEBUG] Canal: {channel}')
                                 if channel:
                                     message = await channel.fetch_message(giveaway['message_id'])
                                     embed = message.embeds[0]
+                                    print(f'[DEBUG] Embed encontrado con {len(embed.fields)} campos')
                                     
                                     # Actualizar el campo de participantes
                                     for i, field in enumerate(embed.fields):
+                                        print(f'[DEBUG] Campo {i}: {field.name}')
                                         if field.name == '👥 Participantes':
                                             embed.set_field_at(i, name='👥 Participantes', value=str(len(giveaway['participants'])), inline=True)
+                                            print(f'[DEBUG] Campo de participantes actualizado a {len(giveaway["participants"])}')
                                             break
                                     
                                     await message.edit(embed=embed)
                                     print(f'[Sorteo] Contador actualizado: {len(giveaway["participants"])} participantes')
+                                else:
+                                    print(f'[DEBUG] Canal no encontrado')
                             except Exception as e:
                                 print(f'[Sorteo] Error al actualizar embed: {e}')
                             
@@ -1376,8 +1394,16 @@ async def on_raw_reaction_remove(payload):
                                 ],
                                 author={'name': member.name, 'icon_url': member.display_avatar.url}
                             )
+                        else:
+                            print(f'[Sorteo] {member.name} ya participó en el sorteo')
             except Exception as e:
                 print(f'Error en sorteo: {e}')
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f'[DEBUG] Mensaje no coincide con ningún sorteo activo')
+    else:
+        print(f'[DEBUG] Servidor no encontrado en data o no tiene sorteos')
 
 # Evento miembro salió
 @bot.event
