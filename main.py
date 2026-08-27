@@ -401,6 +401,10 @@ async def on_ready():
     bot.loop.create_task(_auto_save())
     print('[Optimización] Sistema de auto-save iniciado')
 
+    # Iniciar tarea de actualización de timers de sorteos
+    bot.loop.create_task(update_giveaway_timers())
+    print('[Sorteo] Sistema de actualización de timers iniciado')
+
     # Sincronizar comandos automáticamente con mejor manejo de errores
     try:
         synced = await bot.tree.sync()
@@ -4241,6 +4245,56 @@ async def on_command_error(interaction: discord.Interaction, error: discord.app_
             pass
         except Exception as e:
             print(f'[Error Global] Error al responder sobre error general: {e}')
+
+# Tarea para actualizar el tiempo restante de los sorteos cada minuto
+async def update_giveaway_timers():
+    while True:
+        await asyncio.sleep(60)  # Actualizar cada minuto
+        
+        if 'servers' not in data:
+            continue
+        
+        for server_id, server_data in data['servers'].items():
+            if 'giveaways' not in server_data:
+                continue
+            
+            for giveaway_id, giveaway in server_data['giveaways'].items():
+                try:
+                    end_time = datetime.fromisoformat(giveaway['end_time'])
+                    time_left = end_time - datetime.now()
+                    
+                    if time_left.total_seconds() > 0:
+                        # Calcular tiempo restante en formato legible
+                        days = time_left.days
+                        hours = time_left.seconds // 3600
+                        minutes = (time_left.seconds % 3600) // 60
+                        
+                        if days > 0:
+                            time_str = f"{days}d {hours}h {minutes}m"
+                        elif hours > 0:
+                            time_str = f"{hours}h {minutes}m"
+                        else:
+                            time_str = f"{minutes}m"
+                        
+                        # Actualizar el embed del sorteo
+                        channel = bot.get_channel(giveaway['channel_id'])
+                        if channel:
+                            try:
+                                message = await channel.fetch_message(giveaway['message_id'])
+                                embed = message.embeds[0]
+                                
+                                # Actualizar el campo de tiempo restante
+                                for i, field in enumerate(embed.fields):
+                                    if field.name == '⏰ Tiempo restante':
+                                        embed.set_field_at(i, name='⏰ Tiempo restante', value=time_str, inline=True)
+                                        break
+                                
+                                await message.edit(embed=embed)
+                                print(f'[Sorteo] Tiempo actualizado: {giveaway["prize"]} - {time_str} restante')
+                            except Exception as e:
+                                print(f'[Sorteo] Error al actualizar tiempo: {e}')
+                except Exception as e:
+                    print(f'[Sorteo] Error al procesar sorteo {giveaway_id}: {e}')
 
 # Servidor web Flask para SparkedHost
 app = Flask(__name__)
