@@ -3437,21 +3437,6 @@ async def list_auto_roles(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='config_verification', description='Configura el sistema de verificación')
-@discord.app_commands.describe(channel='Canal de verificación', role='Rol que se dará al verificar')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def config_verification(interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role):
-    # Guardar configuración específica del servidor
-    server_id = str(interaction.guild.id)
-    set_server_setting(interaction.guild.id, 'verification_channel', channel.id)
-    set_server_setting(interaction.guild.id, 'verification_role', role.id)
-    set_server_setting(interaction.guild.id, 'verified_users', get_server_setting(interaction.guild.id, 'verified_users', []))
-
-    save_data()
-
-    await interaction.response.send_message(f'✅ Sistema de verificación configurado en servidor {interaction.guild.name}: {channel.mention} con rol {role.mention}')
-    print(f'[Verificación] Configuración actualizada en servidor {interaction.guild.name} - Canal: {channel.name}, Rol: {role.name}')
-
 @bot.tree.command(name='create_verification_message', description='Crea el mensaje de verificación en el canal configurado')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_verification_message(interaction: discord.Interaction):
