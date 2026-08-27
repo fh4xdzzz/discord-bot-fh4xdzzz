@@ -1972,32 +1972,138 @@ async def bot_servers(interaction: discord.Interaction):
         message = f"🤖 **Bot en {len(servers)} servidor(es):**\n\n" + "\n".join(servers)
         await interaction.response.send_message(message, ephemeral=True)
 
+# Vista para el panel de ayuda
+class HelpView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    def create_embed(self, category='main'):
+        embed = discord.Embed(
+            title='🤖 Comandos del Bot',
+            description='Selecciona una categoría para ver los comandos:',
+            color=0x3498db
+        )
+        
+        if category == 'main':
+            embed.add_field(name='📊 Niveles', value='/level, /top, /server_stats', inline=False)
+            embed.add_field(name='🏆 Ranking', value='/config_ranking_channel, /create_ranking, /update_ranking', inline=False)
+            embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role, /remove_auto_role, /list_auto_roles', inline=False)
+            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role', inline=False)
+            embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
+            embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /config_verification_role, /create_verification_message, /manual_verify', inline=False)
+            embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
+            embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/close, /config_tickets, /send_ticket_panel, /delete_ticket_button', inline=False)
+            embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
+            embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
+            embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
+        elif category == 'niveles':
+            embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el ranking de usuarios\n/server_stats - Muestra estadísticas del servidor', inline=False)
+        elif category == 'ranking':
+            embed.add_field(name='🏆 Ranking', value='/config_ranking_channel - Configura el canal del ranking\n/create_ranking - Crea el mensaje de ranking\n/update_ranking - Actualiza el ranking manualmente', inline=False)
+        elif category == 'autoroles':
+            embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role - Agrega un rol automático\n/remove_auto_role - Elimina un rol automático\n/list_auto_roles - Lista los roles automáticos', inline=False)
+        elif category == 'levelroles':
+            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role - Agrega un rol por nivel\n/remove_level_role - Elimina un rol por nivel', inline=False)
+        elif category == 'reactionroles':
+            embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel - Crea un panel de roles\n/add_reaction_role - Agrega un rol reaccionable\n/remove_reaction_role - Elimina un rol reaccionable', inline=False)
+        elif category == 'verificacion':
+            embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/config_verification_role - Configura el rol de verificación\n/create_verification_message - Crea el mensaje de verificación\n/manual_verify - Verifica manualmente a un usuario', inline=False)
+        elif category == 'sorteos':
+            embed.add_field(name='🎉 Sorteos', value='/create_giveaway - Crea un sorteo\n/end_giveaway - Finaliza un sorteo\n/list_giveaways - Lista los sorteos activos\n/reroll_giveaway - Vuelve a elegir un ganador\n/config_giveaway_channel - Configura el canal de sorteos\n/config_announce_channel - Configura el canal de anuncios', inline=False)
+        elif category == 'notificaciones':
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
+        elif category == 'streams':
+            embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
+        elif category == 'tickets':
+            embed.add_field(name='🎫 Tickets', value='/close - Cierra el ticket actual\n/config_tickets - Muestra configuración de tickets\n/send_ticket_panel - Envía el panel de tickets\n/delete_ticket_button - Elimina un botón del panel', inline=False)
+        elif category == 'configuracion':
+            embed.add_field(name='⚙️ Configuración', value='/config_level_channel - Configura el canal de niveles\n/config_welcome_channel - Configura el canal de bienvenida\n/config_show - Muestra la configuración actual\n/config_log_channel - Configura el canal de logs', inline=False)
+        elif category == 'filtro':
+            embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word - Agrega una palabra prohibida\n/config_remove_banned_word - Elimina una palabra prohibida', inline=False)
+        elif category == 'info':
+            embed.add_field(name='ℹ️ Información', value='/ping - Muestra la latencia del bot\n/info - Muestra información del servidor\n/ayuda - Muestra este panel de ayuda\n/bot_servers - Muestra los servidores del bot', inline=False)
+        
+        embed.set_footer(text='Sistema de Ayuda v3.0 - Panel Interactivo')
+        embed.set_thumbnail(url=bot.user.display_avatar.url)
+        return embed
+    
+    @discord.ui.button(label='📊 Niveles', style=discord.ButtonStyle.primary)
+    async def niveles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('niveles')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🏆 Ranking', style=discord.ButtonStyle.primary)
+    async def ranking_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('ranking')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🎭 Auto-Roles', style=discord.ButtonStyle.primary)
+    async def autoroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('autoroles')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='⭐ Roles por Nivel', style=discord.ButtonStyle.primary)
+    async def levelroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('levelroles')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🎭 Roles Reaccionables', style=discord.ButtonStyle.primary)
+    async def reactionroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('reactionroles')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🔒 Verificación', style=discord.ButtonStyle.primary)
+    async def verificacion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('verificacion')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🎉 Sorteos', style=discord.ButtonStyle.primary)
+    async def sorteos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('sorteos')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🔔 Notificaciones', style=discord.ButtonStyle.primary)
+    async def notificaciones_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('notificaciones')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='📺 Streams', style=discord.ButtonStyle.primary)
+    async def streams_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('streams')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🎫 Tickets', style=discord.ButtonStyle.primary)
+    async def tickets_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('tickets')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='⚙️ Configuración', style=discord.ButtonStyle.primary)
+    async def configuracion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('configuracion')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🔒 Filtro', style=discord.ButtonStyle.primary)
+    async def filtro_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('filtro')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='ℹ️ Información', style=discord.ButtonStyle.primary)
+    async def info_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('info')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label='🏠 Inicio', style=discord.ButtonStyle.success)
+    async def home_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('main')
+        await interaction.response.edit_message(embed=embed, view=self)
+
 @bot.tree.command(name='ayuda', description='Muestra la lista de comandos del bot')
 async def ayuda(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title='🤖 Comandos del Bot',
-        description='Lista de comandos disponibles:',
-        color=0x3498db
-    )
-    
-    embed.add_field(name='📊 Niveles', value='/level, /top, /server_stats', inline=False)
-    embed.add_field(name='🏆 Ranking', value='/config_ranking_channel, /create_ranking, /update_ranking', inline=False)
-    embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role, /remove_auto_role, /list_auto_roles', inline=False)
-    embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role', inline=False)
-    embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
-    embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /config_verification_role, /create_verification_message, /manual_verify', inline=False)
-    embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
-    embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
-    embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
-    embed.add_field(name='🎫 Tickets', value='/close, /config_tickets, /send_ticket_panel, /delete_ticket_button', inline=False)
-    embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
-    embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
-    embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
-    
-    embed.set_footer(text='Sistema de Ayuda v2.0 - Solo comandos simples')
-    embed.set_thumbnail(url=bot.user.display_avatar.url)
-    
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    view = HelpView()
+    embed = view.create_embed('main')
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 @bot.tree.command(name='info', description='Muestra información del servidor')
 async def info(interaction: discord.Interaction):
