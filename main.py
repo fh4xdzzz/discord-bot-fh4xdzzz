@@ -2082,7 +2082,9 @@ class HelpView(discord.ui.View):
                 'color': 0x3498db,
                 'commands': [
                     {'name': '/ticket', 'desc': 'Crea un ticket de soporte'},
-                    {'name': '/close', 'desc': 'Cierra el ticket actual'}
+                    {'name': '/close', 'desc': 'Cierra el ticket actual'},
+                    {'name': '/config_tickets', 'desc': 'Configuración avanzada de tickets'},
+                    {'name': '/config_ticket_category', 'desc': 'Configura la categoría de tickets'}
                 ]
             },
             {
@@ -2576,6 +2578,164 @@ async def config_ticket_category(interaction: discord.Interaction, category: dis
     save_data()
     await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.name}')
     print(f'[Config] Categoría de tickets configurada en servidor {interaction.guild.name}: {category.name} (ID: {category.id})')
+
+# Vista avanzada de configuración de tickets
+class TicketConfigView(discord.ui.View):
+    def __init__(self, interaction: discord.Interaction):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.server_id = str(interaction.guild.id)
+    
+    def create_embed(self):
+        # Obtener configuración actual
+        category_id = get_server_setting(int(self.server_id), 'ticket_category')
+        support_role_id = get_server_setting(int(self.server_id), 'ticket_support_role')
+        welcome_message = get_server_setting(int(self.server_id), 'ticket_welcome_message', '¡Gracias por crear un ticket! El equipo de soporte te responderá pronto.')
+        max_tickets = get_server_setting(int(self.server_id), 'ticket_max_per_user', 1)
+        log_channel_id = get_server_setting(int(self.server_id), 'ticket_log_channel')
+        
+        embed = discord.Embed(
+            title='⚙️ Configuración Avanzada de Tickets',
+            description='Configura todas las opciones del sistema de tickets',
+            color=0x3498db
+        )
+        
+        # Categoría
+        if category_id:
+            category = self.interaction.guild.get_channel(category_id)
+            embed.add_field(name='📁 Categoría', value=category.mention if category else 'No configurada', inline=False)
+        else:
+            embed.add_field(name='📁 Categoría', value='❌ No configurada', inline=False)
+        
+        # Rol de soporte
+        if support_role_id:
+            role = self.interaction.guild.get_role(support_role_id)
+            embed.add_field(name='👥 Rol de Soporte', value=role.mention if role else 'No configurado', inline=False)
+        else:
+            embed.add_field(name='👥 Rol de Soporte', value='❌ No configurado', inline=False)
+        
+        # Mensaje de bienvenida
+        embed.add_field(name='💬 Mensaje de Bienvenida', value=f'```\n{welcome_message[:50]}...\n```' if len(welcome_message) > 50 else f'```\n{welcome_message}\n```', inline=False)
+        
+        # Límite de tickets
+        embed.add_field(name='🔢 Límite por Usuario', value=f'{max_tickets} ticket(s)', inline=True)
+        
+        # Canal de logs
+        if log_channel_id:
+            log_channel = self.interaction.guild.get_channel(log_channel_id)
+            embed.add_field(name='📋 Canal de Logs', value=log_channel.mention if log_channel else 'No configurado', inline=True)
+        else:
+            embed.add_field(name='📋 Canal de Logs', value='❌ No configurado', inline=True)
+        
+        embed.set_footer(text='Usa los botones para configurar cada opción')
+        return embed
+    
+    @discord.ui.button(label='📁 Categoría', style=discord.ButtonStyle.primary)
+    async def set_category(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message('📝 **Configurar Categoría de Tickets**\n\nUsa el comando `/config_ticket_category` seguido de la categoría deseada.', ephemeral=True)
+    
+    @discord.ui.button(label='👥 Rol Soporte', style=discord.ButtonStyle.primary)
+    async def set_support_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = TicketSupportRoleModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='💬 Mensaje Bienvenida', style=discord.ButtonStyle.primary)
+    async def set_welcome_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = TicketWelcomeMessageModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔢 Límite Tickets', style=discord.ButtonStyle.secondary)
+    async def set_max_tickets(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = TicketMaxTicketsModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='📋 Canal Logs', style=discord.ButtonStyle.secondary)
+    async def set_log_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = TicketLogChannelModal()
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label='🔄 Actualizar', style=discord.ButtonStyle.success)
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+    
+    @discord.ui.button(label='❌ Cerrar', style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(view=None)
+        self.stop()
+
+# Modal para configurar rol de soporte
+class TicketSupportRoleModal(discord.ui.Modal, title='Configurar Rol de Soporte'):
+    role_id = discord.ui.TextInput(label='ID del Rol', placeholder='Ingresa el ID del rol de soporte', required=True)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            role_id = int(self.role_id.value)
+            role = interaction.guild.get_role(role_id)
+            if not role:
+                await interaction.response.send_message('❌ Rol no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'ticket_support_role', role_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Rol de soporte configurado: {role.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para configurar mensaje de bienvenida
+class TicketWelcomeMessageModal(discord.ui.Modal, title='Configurar Mensaje de Bienvenida'):
+    message = discord.ui.TextInput(label='Mensaje', placeholder='Mensaje de bienvenida para tickets', default='¡Gracias por crear un ticket! El equipo de soporte te responderá pronto.', style=discord.TextStyle.paragraph, max_length=500)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        set_server_setting(interaction.guild.id, 'ticket_welcome_message', self.message.value)
+        save_data()
+        await interaction.response.send_message('✅ Mensaje de bienvenida configurado.', ephemeral=True)
+
+# Modal para configurar límite de tickets
+class TicketMaxTicketsModal(discord.ui.Modal, title='Configurar Límite de Tickets'):
+    max_tickets = discord.ui.TextInput(label='Límite por Usuario', placeholder='Número máximo de tickets por usuario', default='1', max_length=2)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            max_tickets = int(self.max_tickets.value)
+            if max_tickets < 1 or max_tickets > 10:
+                await interaction.response.send_message('❌ El límite debe estar entre 1 y 10.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'ticket_max_per_user', max_tickets)
+            save_data()
+            await interaction.response.send_message(f'✅ Límite de tickets configurado: {max_tickets} por usuario', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ Valor inválido. Debe ser un número.', ephemeral=True)
+
+# Modal para configurar canal de logs
+class TicketLogChannelModal(discord.ui.Modal, title='Configurar Canal de Logs'):
+    channel_id = discord.ui.TextInput(label='ID del Canal', placeholder='Ingresa el ID del canal de logs', required=False)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.channel_id.value:
+            set_server_setting(interaction.guild.id, 'ticket_log_channel', None)
+            save_data()
+            await interaction.response.send_message('✅ Canal de logs desactivado.', ephemeral=True)
+            return
+        
+        try:
+            channel_id = int(self.channel_id.value)
+            channel = interaction.guild.get_channel(channel_id)
+            if not channel:
+                await interaction.response.send_message('❌ Canal no encontrado. Verifica el ID.', ephemeral=True)
+                return
+            
+            set_server_setting(interaction.guild.id, 'ticket_log_channel', channel_id)
+            save_data()
+            await interaction.response.send_message(f'✅ Canal de logs configurado: {channel.mention}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ ID inválido. Debe ser un número.', ephemeral=True)
+
+@bot.tree.command(name='config_tickets', description='Configuración avanzada del sistema de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_tickets(interaction: discord.Interaction):
+    view = TicketConfigView(interaction)
+    await interaction.response.send_message(embed=view.create_embed(), view=view, ephemeral=True)
 
 @bot.tree.command(name='config_ranking_channel', description='Configura el canal para el ranking de niveles')
 @discord.app_commands.describe(channel='Canal para el ranking')
