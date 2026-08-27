@@ -1990,7 +1990,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role, /remove_auto_role, /list_auto_roles', inline=False)
             embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role', inline=False)
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
-            embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /config_verification_role, /create_verification_message, /manual_verify', inline=False)
+            embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
             embed.add_field(name='🎉 Sorteos', value='/create_giveaway, /end_giveaway, /list_giveaways, /reroll_giveaway, /config_giveaway_channel, /config_announce_channel', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
@@ -2009,7 +2009,7 @@ class HelpView(discord.ui.View):
         elif category == 'reactionroles':
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel - Crea un panel de roles\n/add_reaction_role - Agrega un rol reaccionable\n/remove_reaction_role - Elimina un rol reaccionable', inline=False)
         elif category == 'verificacion':
-            embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/config_verification_role - Configura el rol de verificación\n/create_verification_message - Crea el mensaje de verificación\n/manual_verify - Verifica manualmente a un usuario', inline=False)
+            embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/create_verification_message - Configura rol/canal y crea el mensaje\n/manual_verify - Verifica manualmente a un usuario', inline=False)
         elif category == 'sorteos':
             embed.add_field(name='🎉 Sorteos', value='/create_giveaway - Crea un sorteo\n/end_giveaway - Finaliza un sorteo\n/list_giveaways - Lista los sorteos activos\n/reroll_giveaway - Vuelve a elegir un ganador\n/config_giveaway_channel - Configura el canal de sorteos\n/config_announce_channel - Configura el canal de anuncios', inline=False)
         elif category == 'notificaciones':
@@ -3078,29 +3078,37 @@ async def config_verification_channel(interaction: discord.Interaction, channel:
     await interaction.response.send_message(f'✅ Canal de verificación configurado: {channel.mention}', ephemeral=True)
     print(f'[Config] Canal de verificación configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
-@bot.tree.command(name='config_verification_role', description='Configura el rol de verificación')
-@discord.app_commands.describe(role='Rol de verificación')
+@bot.tree.command(name='create_verification_message', description='Configura y crea el mensaje de verificación')
+@discord.app_commands.describe(
+    role='Rol de verificación',
+    channel='Canal de verificación (opcional, usa el configurado si no se especifica)'
+)
 @discord.app_commands.checks.has_permissions(administrator=True)
-async def config_verification_role(interaction: discord.Interaction, role: discord.Role):
-    set_server_setting(interaction.guild.id, 'verification_role', role.id)
-    save_data()
-    await interaction.response.send_message(f'✅ Rol de verificación configurado: {role.mention}', ephemeral=True)
-    print(f'[Config] Rol de verificación configurado en servidor {interaction.guild.name}: {role.name} (ID: {role.id})')
-
-@bot.tree.command(name='create_verification_message', description='Crea el mensaje de verificación en el canal configurado')
-@discord.app_commands.checks.has_permissions(administrator=True)
-async def create_verification_message(interaction: discord.Interaction):
-    # Usar configuración específica del servidor actual
+async def create_verification_message(interaction: discord.Interaction, role: discord.Role, channel: discord.TextChannel = None):
     server_id = str(interaction.guild.id)
-    if 'servers' not in data or server_id not in data['servers']:
-        await interaction.response.send_message('❌ Primero configura el sistema de verificación', ephemeral=True)
-        return
-
-    server_verification_channel = data['servers'][server_id].get('verification_channel')
-    server_verification_role = data['servers'][server_id].get('verification_role')
+    
+    # Inicializar estructura del servidor si no existe
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    
+    # Configurar el rol si se proporciona
+    if role:
+        set_server_setting(interaction.guild.id, 'verification_role', role.id)
+        save_data()
+    
+    # Configurar el canal si se proporciona
+    if channel:
+        set_server_setting(interaction.guild.id, 'verification_channel', channel.id)
+        save_data()
+    
+    # Obtener configuración actual
+    server_verification_channel = get_server_setting(interaction.guild.id, 'verification_channel')
+    server_verification_role = get_server_setting(interaction.guild.id, 'verification_role')
 
     if not server_verification_channel or not server_verification_role:
-        await interaction.response.send_message('❌ Primero configura el sistema de verificación', ephemeral=True)
+        await interaction.response.send_message('❌ Primero configura el canal y rol de verificación', ephemeral=True)
         return
 
     channel = bot.get_channel(server_verification_channel)
