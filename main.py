@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import requests
 import re
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
 # Cargar variables de entorno
 load_dotenv()
@@ -4107,6 +4109,26 @@ async def on_command_error(interaction: discord.Interaction, error: discord.app_
             pass
         except Exception as e:
             print(f'[Error Global] Error al responder sobre error general: {e}')
+
+# Servidor web Flask para SparkedHost
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return 'Bot de Discord está activo'
+
+@app.route('/health')
+def health():
+    return {'status': 'ok', 'bot': 'active'}
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
+
+# Iniciar el servidor Flask en un hilo separado
+flask_thread = Thread(target=run_flask)
+flask_thread.daemon = True
+flask_thread.start()
 
 # Iniciar el bot
 bot.run(TOKEN)
