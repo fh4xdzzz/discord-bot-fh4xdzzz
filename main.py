@@ -3028,7 +3028,14 @@ async def ticket_config(interaction: discord.Interaction, setting: str, channel_
     category_discord='Categoría de Discord donde se crearán los tickets',
     support_role='Rol de soporte para esta categoría'
 )
-async def ticket_category(interaction: discord.Interaction, action: str, category_id: str = None, 
+@discord.app_commands.choices(
+    action=[
+        discord.app_commands.Choice(name='add', value='add'),
+        discord.app_commands.Choice(name='remove', value='remove'),
+        discord.app_commands.Choice(name='list', value='list')
+    ]
+)
+async def ticket_category(interaction: discord.Interaction, action: str, category_id: str = None,
                           name: str = None, emoji: str = None, description: str = None,
                           category_discord: discord.CategoryChannel = None, support_role: discord.Role = None):
     server_id = str(interaction.guild.id)
@@ -3466,13 +3473,13 @@ async def giveaway_create(interaction: discord.Interaction, prize: str, duration
         await interaction.followup.send(f'❌ Error al crear sorteo: {e}', ephemeral=True)
 
 @bot.tree.command(name='giveaway_end', description='Finaliza manualmente un sorteo')
-@discord.app_commands.describe(message_id='ID del mensaje del sorteo')
+@discord.app_commands.describe(giveaway_id='ID del mensaje del sorteo')
 @discord.app_commands.checks.has_permissions(administrator=True)
-async def giveaway_end(interaction: discord.Interaction, message_id: str):
+async def giveaway_end(interaction: discord.Interaction, giveaway_id: str):
     server_id = str(interaction.guild.id)
     
     try:
-        message_id_int = int(message_id)
+        message_id_int = int(giveaway_id)
     except ValueError:
         await interaction.response.send_message('❌ ID de mensaje inválido', ephemeral=True)
         return
@@ -3487,7 +3494,7 @@ async def giveaway_end(interaction: discord.Interaction, message_id: str):
         return
     
     if str(message_id_int) not in data['servers'][server_id]['giveaways']:
-        await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
+        await interaction.response.send_message('❌ Sorteo no encontrado. Usa /giveaway_list para ver los sorteos activos', ephemeral=True)
         return
     
     giveaway = data['servers'][server_id]['giveaways'][str(message_id_int)]
