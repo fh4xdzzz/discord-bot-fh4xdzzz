@@ -2929,7 +2929,10 @@ async def ticket_panel(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 @discord.app_commands.describe(
     setting='Configuración a modificar',
-    value='Nuevo valor (opcional para mostrar valor actual)'
+    channel_value='Nuevo canal (para panel_channel, category, log_channel)',
+    role_value='Nuevo rol (para support_role, admin_role)',
+    number_value='Nuevo número (para max_tickets_per_user)',
+    text_value='Nuevo texto (para panel_message, ticket_format)'
 )
 @discord.app_commands.choices(
     setting=[
@@ -2943,7 +2946,7 @@ async def ticket_panel(interaction: discord.Interaction):
         discord.app_commands.Choice(name='ticket_format', value='ticket_format')
     ]
 )
-async def ticket_config(interaction: discord.Interaction, setting: str, value: str = None):
+async def ticket_config(interaction: discord.Interaction, setting: str, channel_value: discord.TextChannel = None, role_value: discord.Role = None, number_value: int = None, text_value: str = None):
     server_id = str(interaction.guild.id)
     config = get_ticket_config(interaction.guild.id)
     
@@ -2958,8 +2961,8 @@ async def ticket_config(interaction: discord.Interaction, setting: str, value: s
         'ticket_format': 'Formato del nombre del ticket'
     }
     
-    # Si no se proporciona valor, mostrar el valor actual
-    if value is None:
+    # Si no se proporciona ningún valor, mostrar el valor actual
+    if channel_value is None and role_value is None and number_value is None and text_value is None:
         current_value = config.get(setting, 'No configurado')
         
         # Formatear el valor actual según el tipo
@@ -2980,45 +2983,39 @@ async def ticket_config(interaction: discord.Interaction, setting: str, value: s
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
     
-    # Procesar el valor según el tipo
+    # Procesar el valor según el tipo de configuración
     if setting in ['panel_channel', 'category', 'log_channel']:
-        # Esperar mención de canal
-        if not value or not value.startswith('<#') or not value.endswith('>'):
-            await interaction.response.send_message('❌ Debes mencionar un canal (ej: #general)', ephemeral=True)
-            return
-        channel_id = int(value[2:-1])
-        set_ticket_config(interaction.guild.id, setting, channel_id)
-        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+        if channel_value:
+            set_ticket_config(interaction.guild.id, setting, channel_value.id)
+            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado a {channel_value.mention}', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Para esta configuración debes seleccionar un canal', ephemeral=True)
     
     elif setting in ['support_role', 'admin_role']:
-        # Esperar mención de rol
-        if not value or not value.startswith('<@&') or not value.endswith('>'):
-            await interaction.response.send_message('❌ Debes mencionar un rol (ej: @Soporte)', ephemeral=True)
-            return
-        role_id = int(value[3:-1])
-        set_ticket_config(interaction.guild.id, setting, role_id)
-        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+        if role_value:
+            set_ticket_config(interaction.guild.id, setting, role_value.id)
+            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado a {role_value.mention}', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Para esta configuración debes seleccionar un rol', ephemeral=True)
     
     elif setting == 'max_tickets_per_user':
-        try:
-            max_tickets = int(value)
-            if max_tickets < 1 or max_tickets > 10:
+        if number_value is not None:
+            if number_value < 1 or number_value > 10:
                 await interaction.response.send_message('❌ El valor debe estar entre 1 y 10', ephemeral=True)
                 return
-            set_ticket_config(interaction.guild.id, setting, max_tickets)
-            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado a {max_tickets}', ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message('❌ El valor debe ser un número', ephemeral=True)
+            set_ticket_config(interaction.guild.id, setting, number_value)
+            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado a {number_value}', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Para esta configuración debes proporcionar un número', ephemeral=True)
     
-    else:
-        # Texto
-        if not value:
-            await interaction.response.send_message('❌ Debes proporcionar un valor', ephemeral=True)
-            return
-        set_ticket_config(interaction.guild.id, setting, value)
-        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+    else:  # panel_message, ticket_format
+        if text_value:
+            set_ticket_config(interaction.guild.id, setting, text_value)
+            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+        else:
+            await interaction.response.send_message('❌ Para esta configuración debes proporcionar un texto', ephemeral=True)
     
-    logger.info(f'Configuración de tickets modificada: {setting} = {value} por {interaction.user.name}')
+    logger.info(f'Configuración de tickets modificada: {setting} por {interaction.user.name}')
 
 @bot.tree.command(name='ticket_category', description='Gestiona categorías de tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
