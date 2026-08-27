@@ -90,7 +90,8 @@ def create_default_data():
         },
 
         'user_notifications': {},
-        'giveaways': {}
+        'giveaways': {},
+        'tickets': {}
     }
 
 def validate_data():
@@ -103,7 +104,8 @@ def validate_data():
         'config': dict,
 
         'user_notifications': dict,
-        'servers': dict
+        'servers': dict,
+        'tickets': dict
     }
 
     required_config_keys = {
@@ -164,11 +166,15 @@ def validate_data():
     # Validar estructura de servidores
     if 'servers' not in data:
         data['servers'] = {}
-    
-    # Validar que cada servidor tenga la estructura de sorteos
+
+    # Validar que cada servidor tenga la estructura de sorteos y tickets
     for server_id, server_data in data['servers'].items():
         if 'giveaways' not in server_data:
             server_data['giveaways'] = {}
+        if 'tickets' not in server_data:
+            server_data['tickets'] = {}
+        if 'ticket_categories' not in server_data:
+            server_data['ticket_categories'] = {}
 
     save_data()
     logger.info('Datos validados y corregidos correctamente')
@@ -888,6 +894,25 @@ async def on_ready():
     # Iniciar monitoreo de streams
     bot.loop.create_task(check_streams_periodically())
 
+    # Inicializar categorías de tickets por defecto si no existen
+    for guild in bot.guilds:
+        server_id = str(guild.id)
+        categories = get_ticket_categories(guild.id)
+        if not categories:
+            # Agregar categorías por defecto
+            import uuid
+            default_categories = [
+                {'name': 'Soporte', 'emoji': '🛠️', 'description': 'Ayuda general y soporte técnico'},
+                {'name': 'Compras', 'emoji': '💰', 'description': 'Consultas sobre compras y pagos'},
+                {'name': 'Reportes', 'emoji': '📢', 'description': 'Reportar problemas o usuarios'},
+                {'name': 'Partnership', 'emoji': '🤝', 'description': 'Solicitudes de colaboración'},
+                {'name': 'Otros', 'emoji': '❓', 'description': 'Otras consultas'}
+            ]
+            for cat in default_categories:
+                cat_id = str(uuid.uuid4())[:8]
+                add_ticket_category(guild.id, cat_id, cat['name'], cat['emoji'], cat['description'])
+            logger.info(f'Categorías de tickets por defecto inicializadas para {guild.name}')
+
     # Iniciar actualización de temporizadores de sorteos
 # Actualización periódica del ranking
 async def update_ranking_periodically():
@@ -1398,9 +1423,542 @@ async def delete_and_warn(message, reason):
                     pass
         
         logger.warning(f'Mensaje eliminado de {message.author.name}: {reason}')
-        
+
     except Exception as e:
         logger.error(f'Error en auto-protección: {e}')
+
+# ==================== SISTEMA DE TICKETS ====================
+
+def get_ticket_config(guild_id):
+    """Obtiene la configuración de tickets de un servidor"""
+    server_id = str(guild_id)
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'ticket_config' not in data['servers'][server_id]:
+        data['servers'][server_id]['ticket_config'] = {
+            'panel_channel': None,
+            'category': None,
+            'support_role': None,
+            'admin_role': None,
+            'log_channel': None,
+            'max_tickets_per_user': 1,
+            'panel_message': 'Si necesitas ayuda, abre un ticket seleccionando una categoría.',
+            'ticket_format': 'ticket-{user}'
+        }
+    return data['servers'][server_id]['ticket_config']
+
+def set_ticket_config(guild_id, key, value):
+    """Establece un valor de configuración de tickets"""
+    config = get_ticket_config(guild_id)
+    config[key] = value
+    save_data()
+
+def get_ticket_categories(guild_id):
+    """Obtiene las categorías de tickets de un servidor"""
+    server_id = str(guild_id)
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'ticket_categories' not in data['servers'][server_id]:
+        data['servers'][server_id]['ticket_categories'] = {}
+    return data['servers'][server_id]['ticket_categories']
+
+def add_ticket_category(guild_id, category_id, name, emoji, description, category_discord_id=None, support_role_id=None):
+    """Agrega una categoría de tickets"""
+    categories = get_ticket_categories(guild_id)
+    categories[category_id] = {
+        'name': name,
+        'emoji': emoji,
+        'description': description,
+        'category_discord_id': category_discord_id,
+        'support_role_id': support_role_id
+    }
+    save_data()
+
+def remove_ticket_category(guild_id, category_id):
+    """Elimina una categoría de tickets"""
+    categories = get_ticket_categories(guild_id)
+    if category_id in categories:
+        del categories[category_id]
+        save_data()
+
+def get_user_open_tickets(guild_id, user_id):
+    """Obtiene los tickets abiertos de un usuario"""
+    server_id = str(guild_id)
+    user_id_str = str(user_id)
+    if 'servers' not in data or server_id not in data['servers']:
+        return []
+    if 'tickets' not in data['servers'][server_id]:
+        return []
+    
+    open_tickets = []
+    for ticket_id, ticket_data in data['servers'][server_id]['tickets'].items():
+        if ticket_data['user_id'] == user_id_str and ticket_data['status'] == 'open':
+            open_tickets.append(ticket_data)
+    return open_tickets
+
+async def create_ticket(guild, user, category_name, category_data=None):
+    """Crea un nuevo ticket"""
+    server_id = str(guild.id)
+    user_id = str(user.id)
+    
+    # Verificar límite de tickets
+    config = get_ticket_config(guild.id)
+    max_tickets = config.get('max_tickets_per_user', 1)
+    open_tickets = get_user_open_tickets(guild.id, user.id)
+    
+    if len(open_tickets) >= max_tickets:
+        return {'success': False, 'reason': 'Ya tienes un ticket abierto', 'ticket': open_tickets[0] if open_tickets else None}
+    
+    # Obtener categoría de Discord
+    category_discord_id = None
+    if category_data and category_data.get('category_discord_id'):
+        category_discord_id = category_data['category_discord_id']
+    elif config.get('category'):
+        category_discord_id = config['category']
+    
+    category_discord = None
+    if category_discord_id:
+        category_discord = bot.get_channel(category_discord_id)
+    
+    # Generar nombre del ticket
+    ticket_format = config.get('ticket_format', 'ticket-{user}')
+    ticket_name = ticket_format.replace('{user}', user.name).replace('{id}', str(user.id))
+    ticket_name = ticket_name.lower().replace(' ', '-')
+    
+    # Evitar nombres duplicados
+    ticket_count = 1
+    original_name = ticket_name
+    while any(t['channel_name'] == ticket_name for t in data['servers'][server_id]['tickets'].values() if t['status'] == 'open'):
+        ticket_name = f"{original_name}-{ticket_count}"
+        ticket_count += 1
+    
+    # Crear el canal
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False, view_channel=False),
+        user: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
+    }
+    
+    # Agregar rol de soporte
+    support_role_id = None
+    if category_data and category_data.get('support_role_id'):
+        support_role_id = category_data['support_role_id']
+    elif config.get('support_role'):
+        support_role_id = config['support_role']
+    
+    if support_role_id:
+        support_role = guild.get_role(support_role_id)
+        if support_role:
+            overwrites[support_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
+    
+    # Agregar rol de administrador
+    if config.get('admin_role'):
+        admin_role = guild.get_role(config['admin_role'])
+        if admin_role:
+            overwrites[admin_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
+    
+    try:
+        ticket_channel = await guild.create_text_channel(
+            name=ticket_name,
+            category=category_discord,
+            overwrites=overwrites,
+            reason=f'Ticket creado por {user.name}'
+        )
+    except Exception as e:
+        logger.error(f'Error al crear canal de ticket: {e}')
+        return {'success': False, 'reason': f'Error al crear el canal: {e}'}
+    
+    # Guardar ticket en base de datos
+    ticket_id = str(ticket_channel.id)
+    if 'tickets' not in data['servers'][server_id]:
+        data['servers'][server_id]['tickets'] = {}
+    
+    data['servers'][server_id]['tickets'][ticket_id] = {
+        'channel_id': ticket_id,
+        'channel_name': ticket_name,
+        'user_id': user_id,
+        'user_name': user.name,
+        'category': category_name,
+        'status': 'open',
+        'created_at': datetime.now().isoformat(),
+        'closed_at': None,
+        'closed_by': None,
+        'claimed_by': None,
+        'claimed_at': None,
+        'transcript': [],
+        'additional_users': []
+    }
+    save_data_immediate()
+    
+    # Enviar mensaje inicial
+    embed = discord.Embed(
+        title='🎫 Ticket Creado',
+        description=f'Hola {user.mention}.\n\nGracias por contactar con soporte.\nUn miembro del equipo te atenderá lo antes posible.',
+        color=0x3498db
+    )
+    embed.add_field(name='Categoría', value=category_name, inline=True)
+    embed.add_field(name='Usuario', value=user.mention, inline=True)
+    embed.add_field(name='Fecha', value=datetime.now().strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+    embed.set_footer(text=f'Ticket ID: {ticket_id}')
+    
+    view = TicketControlView(ticket_id, server_id)
+    await ticket_channel.send(content=user.mention, embed=embed, view=view)
+    
+    # Log de ticket creado
+    await send_ticket_log(
+        guild=guild,
+        title='🎫 Ticket Creado',
+        description=f'Nuevo ticket creado por {user.mention}',
+        color=0x2ecc71,
+        fields=[
+            {'name': 'Usuario', 'value': user.name, 'inline': True},
+            {'name': 'Categoría', 'value': category_name, 'inline': True},
+            {'name': 'Canal', 'value': ticket_channel.mention, 'inline': True},
+            {'name': 'Ticket ID', 'value': ticket_id, 'inline': True}
+        ],
+        author={'name': user.name, 'icon_url': user.display_avatar.url}
+    )
+    
+    logger.info(f'Ticket creado: {ticket_id} por {user.name} en {guild.name}')
+    
+    return {'success': True, 'ticket': data['servers'][server_id]['tickets'][ticket_id], 'channel': ticket_channel}
+
+async def close_ticket(ticket_id, server_id, closed_by, reason=None):
+    """Cierra un ticket"""
+    if 'servers' not in data or server_id not in data['servers']:
+        return {'success': False, 'reason': 'Servidor no encontrado'}
+    if 'tickets' not in data['servers'][server_id] or ticket_id not in data['servers'][server_id]['tickets']:
+        return {'success': False, 'reason': 'Ticket no encontrado'}
+    
+    ticket = data['servers'][server_id]['tickets'][ticket_id]
+    if ticket['status'] != 'open':
+        return {'success': False, 'reason': 'El ticket ya está cerrado'}
+    
+    # Generar transcript
+    transcript = await generate_transcript(ticket_id, server_id)
+    
+    # Actualizar ticket
+    ticket['status'] = 'closed'
+    ticket['closed_at'] = datetime.now().isoformat()
+    ticket['closed_by'] = str(closed_by.id)
+    ticket['transcript'] = transcript
+    save_data_immediate()
+    
+    # Obtener canal
+    guild = bot.get_guild(int(server_id))
+    if not guild:
+        return {'success': False, 'reason': 'Servidor no encontrado'}
+    
+    channel = bot.get_channel(int(ticket_id))
+    if not channel:
+        return {'success': False, 'reason': 'Canal no encontrado'}
+    
+    # Actualizar mensaje de cierre
+    embed = discord.Embed(
+        title='🔒 Ticket Cerrado',
+        description=f'Este ticket ha sido cerrado por {closed_by.mention}',
+        color=0xe74c3c
+    )
+    if reason:
+        embed.add_field(name='Motivo', value=reason, inline=False)
+    embed.add_field(name='Fecha de cierre', value=datetime.now().strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+    embed.add_field(name='Cerrado por', value=closed_by.mention, inline=True)
+    embed.set_footer(text=f'Ticket ID: {ticket_id}')
+    
+    await channel.send(embed=embed)
+    
+    # Log de ticket cerrado
+    await send_ticket_log(
+        guild=guild,
+        title='🔒 Ticket Cerrado',
+        description=f'Ticket cerrado por {closed_by.mention}',
+        color=0xe74c3c,
+        fields=[
+            {'name': 'Usuario', 'value': ticket['user_name'], 'inline': True},
+            {'name': 'Categoría', 'value': ticket['category'], 'inline': True},
+            {'name': 'Canal', 'value': channel.mention, 'inline': True},
+            {'name': 'Cerrado por', 'value': closed_by.name, 'inline': True}
+        ]
+    )
+    
+    logger.info(f'Ticket cerrado: {ticket_id} por {closed_by.name}')
+    
+    return {'success': True, 'ticket': ticket}
+
+async def generate_transcript(ticket_id, server_id):
+    """Genera un transcript de todos los mensajes del ticket"""
+    if 'servers' not in data or server_id not in data['servers']:
+        return []
+    if 'tickets' not in data['servers'][server_id] or ticket_id not in data['servers'][server_id]['tickets']:
+        return []
+    
+    channel = bot.get_channel(int(ticket_id))
+    if not channel:
+        return []
+    
+    transcript = []
+    try:
+        async for message in channel.history(limit=None, oldest_first=True):
+            transcript.append({
+                'author_id': str(message.author.id),
+                'author_name': message.author.name,
+                'content': message.content,
+                'timestamp': message.created_at.isoformat(),
+                'attachments': [a.url for a in message.attachments]
+            })
+    except Exception as e:
+        logger.error(f'Error al generar transcript: {e}')
+    
+    return transcript
+
+async def claim_ticket(ticket_id, server_id, claimed_by):
+    """Reclama un ticket"""
+    if 'servers' not in data or server_id not in data['servers']:
+        return {'success': False, 'reason': 'Servidor no encontrado'}
+    if 'tickets' not in data['servers'][server_id] or ticket_id not in data['servers'][server_id]['tickets']:
+        return {'success': False, 'reason': 'Ticket no encontrado'}
+    
+    ticket = data['servers'][server_id]['tickets'][ticket_id]
+    if ticket['status'] != 'open':
+        return {'success': False, 'reason': 'El ticket ya está cerrado'}
+    
+    if ticket['claimed_by']:
+        return {'success': False, 'reason': f'El ticket ya está reclamado por {ticket["claimed_by"]}'}
+    
+    # Reclamar ticket
+    ticket['claimed_by'] = str(claimed_by.id)
+    ticket['claimed_at'] = datetime.now().isoformat()
+    save_data_immediate()
+    
+    # Obtener canal
+    guild = bot.get_guild(int(server_id))
+    if not guild:
+        return {'success': False, 'reason': 'Servidor no encontrado'}
+    
+    channel = bot.get_channel(int(ticket_id))
+    if not channel:
+        return {'success': False, 'reason': 'Canal no encontrado'}
+    
+    # Actualizar embed
+    embed = discord.Embed(
+        title='🎫 Ticket Reclamado',
+        description=f'Este ticket ha sido reclamado por {claimed_by.mention}',
+        color=0xf39c12
+    )
+    embed.add_field(name='Atendido por', value=claimed_by.mention, inline=True)
+    embed.add_field(name='Fecha', value=datetime.now().strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+    embed.set_footer(text=f'Ticket ID: {ticket_id}')
+    
+    await channel.send(embed=embed)
+    
+    # Log de ticket reclamado
+    await send_ticket_log(
+        guild=guild,
+        title='👤 Ticket Reclamado',
+        description=f'Ticket reclamado por {claimed_by.mention}',
+        color=0xf39c12,
+        fields=[
+            {'name': 'Usuario', 'value': ticket['user_name'], 'inline': True},
+            {'name': 'Reclamado por', 'value': claimed_by.name, 'inline': True},
+            {'name': 'Canal', 'value': channel.mention, 'inline': True}
+        ]
+    )
+    
+    logger.info(f'Ticket reclamado: {ticket_id} por {claimed_by.name}')
+    
+    return {'success': True, 'ticket': ticket}
+
+async def send_ticket_log(guild, title, description, color, fields=None, author=None):
+    """Envía un log de tickets al canal configurado"""
+    server_id = str(guild.id)
+    config = get_ticket_config(guild.id)
+    log_channel_id = config.get('log_channel')
+    
+    if not log_channel_id:
+        return
+    
+    log_channel = bot.get_channel(log_channel_id)
+    if not log_channel:
+        return
+    
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color
+    )
+    
+    if fields:
+        for field in fields:
+            embed.add_field(name=field['name'], value=field['value'], inline=field.get('inline', False))
+    
+    if author:
+        embed.set_author(name=author['name'], icon_url=author.get('icon_url'))
+    
+    embed.set_footer(text=f'Servidor: {guild.name}')
+    embed.timestamp = datetime.now()
+    
+    try:
+        await log_channel.send(embed=embed)
+    except Exception as e:
+        logger.error(f'Error al enviar log de ticket: {e}')
+
+# Vistas del sistema de tickets
+class TicketPanelView(discord.ui.View):
+    """Vista del panel de tickets"""
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.guild_id = guild_id
+        self._update_options()
+    
+    def _update_options(self):
+        """Actualiza las opciones del select menu"""
+        categories = get_ticket_categories(self.guild_id)
+        select = self.children[0] if self.children else None
+        if select:
+            select.options = [
+                discord.SelectOption(
+                    label=cat['name'],
+                    emoji=cat.get('emoji'),
+                    description=cat.get('description', ''),
+                    value=cat_id
+                )
+                for cat_id, cat in categories.items()
+            ]
+    
+    @discord.ui.select(
+        placeholder='Selecciona una categoría...',
+        min_values=1,
+        max_values=1
+    )
+    async def category_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        category_id = select.values[0]
+        categories = get_ticket_categories(self.guild_id)
+        
+        if category_id not in categories:
+            await interaction.response.send_message('❌ Categoría no encontrada', ephemeral=True)
+            return
+        
+        category = categories[category_id]
+        
+        # Crear ticket
+        result = await create_ticket(interaction.guild, interaction.user, category['name'], category)
+        
+        if result['success']:
+            await interaction.response.send_message(f'✅ Ticket creado: {result["channel"].mention}', ephemeral=True)
+        else:
+            await interaction.response.send_message(f'❌ {result["reason"]}', ephemeral=True)
+
+class TicketControlView(discord.ui.View):
+    """Vista de control del ticket"""
+    def __init__(self, ticket_id, server_id):
+        super().__init__(timeout=None)
+        self.ticket_id = ticket_id
+        self.server_id = server_id
+    
+    @discord.ui.button(label='🔒 Cerrar', style=discord.ButtonStyle.danger)
+    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar permisos
+        if 'servers' not in data or self.server_id not in data['servers']:
+            await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+            return
+        
+        ticket = data['servers'][self.server_id]['tickets'].get(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+            return
+        
+        user_id = str(interaction.user.id)
+        is_owner = ticket['user_id'] == user_id
+        is_staff = interaction.user.guild_permissions.manage_channels or interaction.user.guild_permissions.administrator
+        
+        if not is_owner and not is_staff:
+            await interaction.response.send_message('❌ No tienes permisos para cerrar este ticket', ephemeral=True)
+            return
+        
+        # Mostrar confirmación
+        view = ConfirmCloseView(self.ticket_id, self.server_id, interaction.user)
+        embed = discord.Embed(
+            title='¿Cerrar Ticket?',
+            description='¿Estás seguro de que quieres cerrar este ticket?',
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    
+    @discord.ui.button(label='👤 Reclamar', style=discord.ButtonStyle.primary)
+    async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar permisos de staff
+        if not interaction.user.guild_permissions.manage_channels and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo el staff puede reclamar tickets', ephemeral=True)
+            return
+        
+        result = await claim_ticket(self.ticket_id, self.server_id, interaction.user)
+        
+        if result['success']:
+            await interaction.response.send_message('✅ Ticket reclamado', ephemeral=True)
+        else:
+            await interaction.response.send_message(f'❌ {result["reason"]}', ephemeral=True)
+    
+    @discord.ui.button(label='📋 Info', style=discord.ButtonStyle.secondary)
+    async def info_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if 'servers' not in data or self.server_id not in data['servers']:
+            await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+            return
+        
+        ticket = data['servers'][self.server_id]['tickets'].get(self.ticket_id)
+        if not ticket:
+            await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='📋 Información del Ticket',
+            color=0x3498db
+        )
+        embed.add_field(name='ID', value=self.ticket_id, inline=True)
+        embed.add_field(name='Propietario', value=f"<@{ticket['user_id']}>", inline=True)
+        embed.add_field(name='Categoría', value=ticket['category'], inline=True)
+        embed.add_field(name='Estado', value=ticket['status'], inline=True)
+        embed.add_field(name='Creado', value=datetime.fromisoformat(ticket['created_at']).strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+        
+        if ticket['claimed_by']:
+            embed.add_field(name='Reclamado por', value=f"<@{ticket['claimed_by']}>", inline=True)
+        
+        if ticket['status'] == 'closed' and ticket['closed_at']:
+            embed.add_field(name='Cerrado', value=datetime.fromisoformat(ticket['closed_at']).strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+            embed.add_field(name='Cerrado por', value=f"<@{ticket['closed_by']}>", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class ConfirmCloseView(discord.ui.View):
+    """Vista de confirmación de cierre"""
+    def __init__(self, ticket_id, server_id, user):
+        super().__init__(timeout=60)
+        self.ticket_id = ticket_id
+        self.server_id = server_id
+        self.user = user
+    
+    @discord.ui.button(label='✅ Confirmar', style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        result = await close_ticket(self.ticket_id, self.server_id, self.user)
+        
+        if result['success']:
+            await interaction.response.edit_message(content='✅ Ticket cerrado', embed=None, view=None)
+            # Deshabilitar vista del ticket
+            channel = bot.get_channel(int(self.ticket_id))
+            if channel:
+                async for msg in channel.history(limit=10):
+                    if msg.author == bot.user and msg.components:
+                        await msg.edit(view=None)
+                        break
+        else:
+            await interaction.response.edit_message(content=f'❌ {result["reason"]}', embed=None, view=None)
+    
+    @discord.ui.button(label='❌ Cancelar', style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content='❌ Cancelado', embed=None, view=None)
 
 # Evento guild_member_add
 @bot.event
@@ -2207,6 +2765,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway create, /giveaway end, /giveaway reroll, /giveaway list, /giveaway config', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket panel, /ticket config, /ticket category, /ticket add, /ticket remove, /ticket rename, /ticket info, /ticket close, /ticket claim', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
@@ -2226,6 +2785,8 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel - Configura el canal de verificación\n/create_verification_message - Configura rol/canal y crea el mensaje\n/manual_verify - Verifica manualmente a un usuario', inline=False)
         elif category == 'sorteos':
             embed.add_field(name='🎉 Sorteos', value='/giveaway create - Crea un nuevo sorteo\n/giveaway end - Finaliza un sorteo manualmente\n/giveaway reroll - Selecciona nuevo ganador\n/giveaway list - Muestra sorteos activos\n/giveaway config - Configura el sistema de sorteos', inline=False)
+        elif category == 'tickets':
+            embed.add_field(name='🎫 Tickets', value='/ticket panel - Envía el panel de tickets\n/ticket config - Configura el sistema de tickets\n/ticket category - Gestiona categorías de tickets\n/ticket add - Agrega usuario a ticket\n/ticket remove - Elimina usuario de ticket\n/ticket rename - Renombra un ticket\n/ticket info - Muestra información del ticket\n/ticket close - Cierra el ticket actual\n/ticket claim - Reclama el ticket actual', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -2276,6 +2837,11 @@ class HelpView(discord.ui.View):
         embed = self.create_embed('sorteos')
         await interaction.response.edit_message(embed=embed, view=self)
     
+    @discord.ui.button(label='🎫 Tickets', style=discord.ButtonStyle.primary)
+    async def tickets_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = self.create_embed('tickets')
+        await interaction.response.edit_message(embed=embed, view=self)
+    
     @discord.ui.button(label='🔔 Notificaciones', style=discord.ButtonStyle.primary)
     async def notificaciones_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = self.create_embed('notificaciones')
@@ -2312,6 +2878,438 @@ async def ayuda(interaction: discord.Interaction):
     view = HelpView()
     embed = view.create_embed('main')
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+# ==================== COMANDOS DE TICKETS ====================
+
+@bot.tree.command(name='ticket', description='Comandos de tickets')
+async def ticket(interaction: discord.Interaction):
+    """Comando principal de tickets - muestra ayuda"""
+    embed = discord.Embed(
+        title='🎫 Sistema de Tickets',
+        description='Usa los subcomandos para gestionar tickets:',
+        color=0x3498db
+    )
+    embed.add_field(name='📋 Panel', value='/ticket panel - Envía el panel de tickets', inline=False)
+    embed.add_field(name='⚙️ Config', value='/ticket config - Configura el sistema de tickets', inline=False)
+    embed.add_field(name='📂 Categorías', value='/ticket category - Gestiona categorías de tickets', inline=False)
+    embed.add_field(name='➕ Agregar', value='/ticket add - Agrega usuario a ticket', inline=False)
+    embed.add_field(name='➖ Eliminar', value='/ticket remove - Elimina usuario de ticket', inline=False)
+    embed.add_field(name='✏️ Renombrar', value='/ticket rename - Renombra un ticket', inline=False)
+    embed.add_field(name='ℹ️ Info', value='/ticket info - Muestra información del ticket', inline=False)
+    embed.add_field(name='🔒 Cerrar', value='/ticket close - Cierra el ticket actual', inline=False)
+    embed.add_field(name='👤 Reclamar', value='/ticket claim - Reclama el ticket actual', inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name='ticket_panel', description='Envía el panel de tickets al canal actual')
+@discord.app_commands.checks.has_permissions(manage_channels=True)
+async def ticket_panel(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+    categories = get_ticket_categories(interaction.guild.id)
+    
+    if not categories:
+        await interaction.response.send_message('❌ No hay categorías configuradas. Usa `/ticket category add` primero.', ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title='🎫 Centro de Soporte',
+        description='Si necesitas ayuda, abre un ticket seleccionando una categoría.',
+        color=0x3498db
+    )
+    
+    view = TicketPanelView(interaction.guild.id)
+    
+    await interaction.response.send_message(embed=embed, view=view)
+    
+    # Guardar canal del panel
+    set_ticket_config(interaction.guild.id, 'panel_channel', interaction.channel.id)
+    
+    logger.info(f'Panel de tickets enviado por {interaction.user.name} en {interaction.guild.name}')
+
+@bot.tree.command(name='ticket_config', description='Configura el sistema de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+@discord.app_commands.describe(
+    setting='Configuración a modificar',
+    value='Nuevo valor'
+)
+async def ticket_config(interaction: discord.Interaction, setting: str, value: str = None):
+    server_id = str(interaction.guild.id)
+    config = get_ticket_config(interaction.guild.id)
+    
+    valid_settings = {
+        'panel_channel': 'Canal del panel',
+        'category': 'Categoría de tickets',
+        'support_role': 'Rol de soporte',
+        'admin_role': 'Rol de administrador',
+        'log_channel': 'Canal de logs',
+        'max_tickets_per_user': 'Máximo de tickets por usuario',
+        'panel_message': 'Mensaje del panel',
+        'ticket_format': 'Formato del nombre del ticket'
+    }
+    
+    if setting not in valid_settings:
+        await interaction.response.send_message(f'❌ Configuración inválida. Opciones: {", ".join(valid_settings.keys())}', ephemeral=True)
+        return
+    
+    # Procesar el valor según el tipo
+    if setting in ['panel_channel', 'category', 'log_channel']:
+        # Esperar mención de canal
+        if not value or not value.startswith('<#') or not value.endswith('>'):
+            await interaction.response.send_message('❌ Debes mencionar un canal (ej: #general)', ephemeral=True)
+            return
+        channel_id = int(value[2:-1])
+        set_ticket_config(interaction.guild.id, setting, channel_id)
+        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+    
+    elif setting in ['support_role', 'admin_role']:
+        # Esperar mención de rol
+        if not value or not value.startswith('<@&') or not value.endswith('>'):
+            await interaction.response.send_message('❌ Debes mencionar un rol (ej: @Soporte)', ephemeral=True)
+            return
+        role_id = int(value[3:-1])
+        set_ticket_config(interaction.guild.id, setting, role_id)
+        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+    
+    elif setting == 'max_tickets_per_user':
+        try:
+            max_tickets = int(value)
+            if max_tickets < 1 or max_tickets > 10:
+                await interaction.response.send_message('❌ El valor debe estar entre 1 y 10', ephemeral=True)
+                return
+            set_ticket_config(interaction.guild.id, setting, max_tickets)
+            await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado a {max_tickets}', ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message('❌ El valor debe ser un número', ephemeral=True)
+    
+    else:
+        # Texto
+        if not value:
+            await interaction.response.send_message('❌ Debes proporcionar un valor', ephemeral=True)
+            return
+        set_ticket_config(interaction.guild.id, setting, value)
+        await interaction.response.send_message(f'✅ {valid_settings[setting]} configurado', ephemeral=True)
+    
+    logger.info(f'Configuración de tickets modificada: {setting} = {value} por {interaction.user.name}')
+
+@bot.tree.command(name='ticket_category', description='Gestiona categorías de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+@discord.app_commands.describe(
+    action='Acción a realizar',
+    category_id='ID de la categoría (para eliminar)',
+    name='Nombre de la categoría',
+    emoji='Emoji de la categoría',
+    description='Descripción de la categoría',
+    category_discord='Categoría de Discord donde se crearán los tickets',
+    support_role='Rol de soporte para esta categoría'
+)
+async def ticket_category(interaction: discord.Interaction, action: str, category_id: str = None, 
+                          name: str = None, emoji: str = None, description: str = None,
+                          category_discord: discord.CategoryChannel = None, support_role: discord.Role = None):
+    server_id = str(interaction.guild.id)
+    
+    if action == 'add':
+        if not name:
+            await interaction.response.send_message('❌ Debes proporcionar un nombre', ephemeral=True)
+            return
+        
+        # Generar ID único
+        import uuid
+        cat_id = str(uuid.uuid4())[:8]
+        
+        category_discord_id = category_discord.id if category_discord else None
+        support_role_id = support_role.id if support_role else None
+        
+        add_ticket_category(
+            interaction.guild.id, cat_id, name, emoji or '🎫', 
+            description or '', category_discord_id, support_role_id
+        )
+        
+        await interaction.response.send_message(f'✅ Categoría "{name}" agregada con ID: {cat_id}', ephemeral=True)
+        logger.info(f'Categoría de tickets agregada: {name} por {interaction.user.name}')
+    
+    elif action == 'remove':
+        if not category_id:
+            await interaction.response.send_message('❌ Debes proporcionar el ID de la categoría', ephemeral=True)
+            return
+        
+        remove_ticket_category(interaction.guild.id, category_id)
+        await interaction.response.send_message(f'✅ Categoría {category_id} eliminada', ephemeral=True)
+        logger.info(f'Categoría de tickets eliminada: {category_id} por {interaction.user.name}')
+    
+    elif action == 'list':
+        categories = get_ticket_categories(interaction.guild.id)
+        
+        if not categories:
+            await interaction.response.send_message('❌ No hay categorías configuradas', ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title='📂 Categorías de Tickets',
+            description=f'Categorías configuradas en {interaction.guild.name}',
+            color=0x3498db
+        )
+        
+        for cat_id, cat in categories.items():
+            value = f"{cat.get('emoji', '🎫')} {cat['name']}"
+            if cat.get('description'):
+                value += f"\n{cat['description']}"
+            if cat.get('category_discord_id'):
+                cat_discord = bot.get_channel(cat['category_discord_id'])
+                if cat_discord:
+                    value += f"\nCategoría: {cat_discord.name}"
+            if cat.get('support_role_id'):
+                role = interaction.guild.get_role(cat['support_role_id'])
+                if role:
+                    value += f"\nRol: {role.mention}"
+            embed.add_field(name=f'ID: {cat_id}', value=value, inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    else:
+        await interaction.response.send_message('❌ Acción inválida. Usa: add, remove, list', ephemeral=True)
+
+@bot.tree.command(name='ticket_add', description='Agrega un usuario al ticket actual')
+@discord.app_commands.checks.has_permissions(manage_channels=True)
+@discord.app_commands.describe(user='Usuario a agregar')
+async def ticket_add(interaction: discord.Interaction, user: discord.Member):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+        return
+    
+    if 'tickets' not in data['servers'][server_id] or channel_id not in data['servers'][server_id]['tickets']:
+        await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+        return
+    
+    ticket = data['servers'][server_id]['tickets'][channel_id]
+    
+    if str(user.id) in ticket['additional_users']:
+        await interaction.response.send_message('❌ El usuario ya está en el ticket', ephemeral=True)
+        return
+    
+    # Agregar permisos
+    await interaction.channel.set_permissions(user, read_messages=True, send_messages=True, view_channel=True)
+    
+    # Actualizar ticket
+    ticket['additional_users'].append(str(user.id))
+    save_data_immediate()
+    
+    await interaction.response.send_message(f'✅ {user.mention} agregado al ticket', ephemeral=True)
+    
+    # Log
+    await send_ticket_log(
+        guild=interaction.guild,
+        title='➕ Usuario Agregado',
+        description=f'{interaction.user.mention} agregó a {user.mention} al ticket',
+        color=0x2ecc71,
+        fields=[
+            {'name': 'Ticket', 'value': interaction.channel.mention, 'inline': True},
+            {'name': 'Agregado por', 'value': interaction.user.name, 'inline': True},
+            {'name': 'Usuario', 'value': user.name, 'inline': True}
+        ]
+    )
+    
+    logger.info(f'Usuario {user.name} agregado al ticket {channel_id} por {interaction.user.name}')
+
+@bot.tree.command(name='ticket_remove', description='Elimina un usuario del ticket actual')
+@discord.app_commands.checks.has_permissions(manage_channels=True)
+@discord.app_commands.describe(user='Usuario a eliminar')
+async def ticket_remove(interaction: discord.Interaction, user: discord.Member):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+        return
+    
+    if 'tickets' not in data['servers'][server_id] or channel_id not in data['servers'][server_id]['tickets']:
+        await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+        return
+    
+    ticket = data['servers'][server_id]['tickets'][channel_id]
+    
+    # No permitir eliminar al propietario accidentalmente
+    if str(user.id) == ticket['user_id']:
+        await interaction.response.send_message('❌ No puedes eliminar al propietario del ticket', ephemeral=True)
+        return
+    
+    if str(user.id) not in ticket['additional_users']:
+        await interaction.response.send_message('❌ El usuario no está en el ticket', ephemeral=True)
+        return
+    
+    # Quitar permisos
+    await interaction.channel.set_permissions(user, read_messages=False, view_channel=False)
+    
+    # Actualizar ticket
+    ticket['additional_users'].remove(str(user.id))
+    save_data_immediate()
+    
+    await interaction.response.send_message(f'✅ {user.mention} eliminado del ticket', ephemeral=True)
+    
+    # Log
+    await send_ticket_log(
+        guild=interaction.guild,
+        title='➖ Usuario Eliminado',
+        description=f'{interaction.user.mention} eliminó a {user.mention} del ticket',
+        color=0xe74c3c,
+        fields=[
+            {'name': 'Ticket', 'value': interaction.channel.mention, 'inline': True},
+            {'name': 'Eliminado por', 'value': interaction.user.name, 'inline': True},
+            {'name': 'Usuario', 'value': user.name, 'inline': True}
+        ]
+    )
+    
+    logger.info(f'Usuario {user.name} eliminado del ticket {channel_id} por {interaction.user.name}')
+
+@bot.tree.command(name='ticket_rename', description='Renombra el ticket actual')
+@discord.app_commands.checks.has_permissions(manage_channels=True)
+@discord.app_commands.describe(name='Nuevo nombre del ticket')
+async def ticket_rename(interaction: discord.Interaction, name: str):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    # Validar nombre
+    try:
+        name = validate_string_length(name, 100, "Nombre del ticket")
+        if not name.strip():
+            await interaction.response.send_message('❌ El nombre no puede estar vacío', ephemeral=True)
+            return
+    except ValueError as e:
+        await interaction.response.send_message(f'❌ {e}', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+        return
+    
+    if 'tickets' not in data['servers'][server_id] or channel_id not in data['servers'][server_id]['tickets']:
+        await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+        return
+    
+    ticket = data['servers'][server_id]['tickets'][channel_id]
+    
+    # Renombrar canal
+    try:
+        await interaction.channel.edit(name=name)
+        ticket['channel_name'] = name
+        save_data_immediate()
+        await interaction.response.send_message(f'✅ Ticket renombrado a "{name}"', ephemeral=True)
+        logger.info(f'Ticket {channel_id} renombrado a {name} por {interaction.user.name}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al renombrar: {e}', ephemeral=True)
+
+@bot.tree.command(name='ticket_info', description='Muestra información del ticket actual')
+async def ticket_info(interaction: discord.Interaction):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+        return
+    
+    if 'tickets' not in data['servers'][server_id] or channel_id not in data['servers'][server_id]['tickets']:
+        await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+        return
+    
+    ticket = data['servers'][server_id]['tickets'][channel_id]
+    
+    embed = discord.Embed(
+        title='📋 Información del Ticket',
+        color=0x3498db
+    )
+    embed.add_field(name='ID', value=channel_id, inline=True)
+    embed.add_field(name='Propietario', value=f"<@{ticket['user_id']}>", inline=True)
+    embed.add_field(name='Categoría', value=ticket['category'], inline=True)
+    embed.add_field(name='Estado', value=ticket['status'], inline=True)
+    embed.add_field(name='Creado', value=datetime.fromisoformat(ticket['created_at']).strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+    
+    if ticket['claimed_by']:
+        embed.add_field(name='Reclamado por', value=f"<@{ticket['claimed_by']}>", inline=True)
+    
+    if ticket['status'] == 'closed' and ticket['closed_at']:
+        embed.add_field(name='Cerrado', value=datetime.fromisoformat(ticket['closed_at']).strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+        embed.add_field(name='Cerrado por', value=f"<@{ticket['closed_by']}>", inline=True)
+    
+    if ticket['additional_users']:
+        users_list = [f"<@{uid}>" for uid in ticket['additional_users']]
+        embed.add_field(name='Usuarios adicionales', value=', '.join(users_list), inline=False)
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name='ticket_close', description='Cierra el ticket actual')
+async def ticket_close(interaction: discord.Interaction):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    if 'servers' not in data or server_id not in data['servers']:
+        await interaction.response.send_message('❌ Error del servidor', ephemeral=True)
+        return
+    
+    if 'tickets' not in data['servers'][server_id] or channel_id not in data['servers'][server_id]['tickets']:
+        await interaction.response.send_message('❌ Ticket no encontrado', ephemeral=True)
+        return
+    
+    ticket = data['servers'][server_id]['tickets'][channel_id]
+    
+    # Verificar permisos
+    user_id = str(interaction.user.id)
+    is_owner = ticket['user_id'] == user_id
+    is_staff = interaction.user.guild_permissions.manage_channels or interaction.user.guild_permissions.administrator
+    
+    if not is_owner and not is_staff:
+        await interaction.response.send_message('❌ No tienes permisos para cerrar este ticket', ephemeral=True)
+        return
+    
+    # Mostrar confirmación
+    view = ConfirmCloseView(channel_id, server_id, interaction.user)
+    embed = discord.Embed(
+        title='¿Cerrar Ticket?',
+        description='¿Estás seguro de que quieres cerrar este ticket?',
+        color=0xe74c3c
+    )
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+@bot.tree.command(name='ticket_claim', description='Reclama el ticket actual')
+async def ticket_claim(interaction: discord.Interaction):
+    if not interaction.channel or 'ticket-' not in interaction.channel.name:
+        await interaction.response.send_message('❌ Este comando solo funciona en canales de tickets', ephemeral=True)
+        return
+    
+    # Verificar permisos de staff
+    if not interaction.user.guild_permissions.manage_channels and not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message('❌ Solo el staff puede reclamar tickets', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    result = await claim_ticket(channel_id, server_id, interaction.user)
+    
+    if result['success']:
+        await interaction.response.send_message('✅ Ticket reclamado', ephemeral=True)
+    else:
+        await interaction.response.send_message(f'❌ {result["reason"]}', ephemeral=True)
 
 # ==================== COMANDOS DE SORTEOS ====================
 
