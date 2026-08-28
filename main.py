@@ -2274,7 +2274,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='📊 Niveles', value='/level, /top, /server_stats', inline=False)
             embed.add_field(name='🏆 Ranking', value='/config_ranking_channel, /create_ranking, /update_ranking', inline=False)
             embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role, /remove_auto_role, /list_auto_roles', inline=False)
-            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role', inline=False)
+            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role, /remove_level_role, /list_level_roles', inline=False)
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel, /add_reaction_role, /remove_reaction_role', inline=False)
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
@@ -2288,11 +2288,11 @@ class HelpView(discord.ui.View):
         elif category == 'niveles':
             embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el ranking de usuarios\n/server_stats - Muestra estadísticas del servidor', inline=False)
         elif category == 'ranking':
-            embed.add_field(name='🏆 Ranking', value='/config_ranking_channel - Configura el canal del ranking\n/create_ranking - Crea el mensaje de ranking\n/update_ranking - Actualiza el ranking manualmente', inline=False)
+            embed.add_field(name='🏆 Ranking', value='/config_ranking_channel - Configura el canal del ranking\n/create_ranking - Crea el mensaje de ranking\n/update_ranking - Actualiza el ranking manualmente\n/config_level_channel - Configura canal de notificaciones de nivel', inline=False)
         elif category == 'autoroles':
             embed.add_field(name='🎭 Auto-Roles', value='/add_auto_role - Agrega un rol automático\n/remove_auto_role - Elimina un rol automático\n/list_auto_roles - Lista los roles automáticos', inline=False)
         elif category == 'levelroles':
-            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role - Agrega un rol por nivel\n/remove_level_role - Elimina un rol por nivel', inline=False)
+            embed.add_field(name='⭐ Roles por Nivel', value='/add_level_role - Agrega un rol por nivel\n/remove_level_role - Elimina un rol por nivel\n/list_level_roles - Lista todos los roles por nivel', inline=False)
         elif category == 'reactionroles':
             embed.add_field(name='🎭 Roles Reaccionables', value='/create_role_panel - Crea un panel de roles\n/add_reaction_role - Agrega un rol reaccionable\n/remove_reaction_role - Elimina un rol reaccionable', inline=False)
         elif category == 'verificacion':
