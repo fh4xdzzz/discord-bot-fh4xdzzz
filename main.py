@@ -2479,12 +2479,17 @@ class TicketPanelView(discord.ui.View):
             channel_name = f'ticket-{interaction.user.name}'.lower().replace(' ', '-')
 
             try:
-                # Crear canal privado
+                # Crear canal privado con permisos específicos
                 overwrites = {
                     interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False, view_channel=False),
                     interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True),
                     interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_channels=True, view_channel=True)
                 }
+
+                # Agregar acceso para todos los roles con permisos de administrador
+                for role in interaction.guild.roles:
+                    if role.permissions.administrator:
+                        overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
 
                 category = interaction.guild.get_channel(get_server_setting(interaction.guild.id, 'ticket_category'))
                 ticket_channel = await interaction.guild.create_text_channel(
