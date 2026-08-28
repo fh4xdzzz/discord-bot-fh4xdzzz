@@ -2423,7 +2423,7 @@ class TicketPanelView(discord.ui.View):
                     reason=f'Ticket creado por {interaction.user.name}'
                 )
 
-                # Enviar mensaje de bienvenida
+                # Enviar mensaje de bienvenida con botones de control
                 embed = discord.Embed(
                     title=f'🎫 Ticket: {button_label}',
                     description=f'Hola {interaction.user.mention}.\n\nGracias por contactar con soporte.\nUn miembro del equipo te atenderá lo antes posible.',
@@ -2433,7 +2433,10 @@ class TicketPanelView(discord.ui.View):
                 embed.add_field(name='Usuario', value=interaction.user.mention, inline=True)
                 embed.set_footer(text=f'Creado el {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
 
-                await ticket_channel.send(content=interaction.user.mention, embed=embed)
+                # Crear vista con botones de control para administradores
+                view = TicketControlView()
+
+                await ticket_channel.send(content=interaction.user.mention, embed=embed, view=view)
 
                 await interaction.response.send_message(f'✅ Ticket creado: {ticket_channel.mention}', ephemeral=True)
                 logger.info(f'Ticket creado: {button_label} por {interaction.user.name}')
@@ -2443,6 +2446,66 @@ class TicketPanelView(discord.ui.View):
                 await interaction.response.send_message(f'❌ Error al crear ticket: {e}', ephemeral=True)
 
         return callback
+
+class TicketControlView(discord.ui.View):
+    """Vista de control del ticket - solo para administradores"""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label='👤 Reclamar', style=discord.ButtonStyle.primary)
+    async def claim_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar que sea administrador
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
+            return
+
+        await interaction.response.send_message(f'👤 Ticket reclamado por {interaction.user.mention}', ephemeral=True)
+        logger.info(f'Ticket reclamado por {interaction.user.name}')
+
+    @discord.ui.button(label='🔒 Cerrar', style=discord.ButtonStyle.danger)
+    async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar que sea administrador
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
+            return
+
+        # Confirmar cierre
+        view = ConfirmCloseView()
+        embed = discord.Embed(
+            title='¿Cerrar Ticket?',
+            description='¿Estás seguro de que quieres cerrar este ticket?',
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label='➕ Añadir miembro', style=discord.ButtonStyle.secondary)
+    async def add_member_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar que sea administrador
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
+            return
+
+        await interaction.response.send_message('💡 Usa `/add_role_to_user @usuario` para agregar un miembro al ticket', ephemeral=True)
+
+class ConfirmCloseView(discord.ui.View):
+    """Vista de confirmación de cierre"""
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label='✅ Confirmar', style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content='✅ Ticket cerrado', embed=None, view=None)
+        
+        # Deshabilitar vista del ticket
+        channel = interaction.channel
+        async for msg in channel.history(limit=10):
+            if msg.author == bot.user and msg.components:
+                await msg.edit(view=None)
+                break
+
+    @discord.ui.button(label='❌ Cancelar', style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content='❌ Cancelado', embed=None, view=None)
 
 @bot.tree.command(name='ticket_channel', description='Configura el canal donde se crearán los tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
