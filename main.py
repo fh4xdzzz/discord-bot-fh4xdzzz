@@ -2280,7 +2280,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
-            embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_create_config, /ticket_send', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
@@ -2301,7 +2301,7 @@ class HelpView(discord.ui.View):
         elif category == 'sorteos':
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create - Crea un nuevo sorteo\n/giveaway_end - Finaliza un sorteo manualmente\n/giveaway_reroll - Selecciona nuevo ganador\n/giveaway_list - Muestra sorteos activos\n/giveaway_config - Configura el sistema de sorteos', inline=False)
         elif category == 'tickets':
-            embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal actual', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal actual\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -2852,6 +2852,139 @@ async def ticket_channel(interaction: discord.Interaction, category: discord.Cat
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def ticket_create_config(interaction: discord.Interaction):
     await interaction.response.send_modal(TicketConfigModal())
+
+@bot.tree.command(name='ticket_search', description='Busca tickets por usuario, estado, categoría o prioridad')
+@discord.app_commands.checks.has_permissions(administrator=True)
+@discord.app_commands.describe(
+    user='Usuario (opcional)',
+    status='Estado del ticket (opcional)',
+    category='Categoría del ticket (opcional)',
+    priority='Prioridad del ticket (opcional)'
+)
+async def ticket_search(interaction: discord.Interaction,
+                        user: discord.Member = None,
+                        status: str = None,
+                        category: str = None,
+                        priority: str = None):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'tickets' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay tickets en este servidor', ephemeral=True)
+        return
+
+    tickets = data['servers'][server_id]['tickets']
+    filtered_tickets = []
+
+    for ticket_id, ticket_info in tickets.items():
+        # Filtrar por usuario
+        if user and str(user.id) != ticket_info['user_id']:
+            continue
+
+        # Filtrar por estado
+        if status and ticket_info['status'] != status.lower():
+            continue
+
+        # Filtrar por categoría
+        if category and ticket_info['category_id'] != category.lower():
+            continue
+
+        # Filtrar por prioridad
+        if priority and ticket_info['priority'] != priority.lower():
+            continue
+
+        filtered_tickets.append((ticket_id, ticket_info))
+
+    if not filtered_tickets:
+        await interaction.response.send_message('❌ No se encontraron tickets con esos criterios', ephemeral=True)
+        return
+
+    # Crear embed con resultados
+    embed = discord.Embed(
+        title=f'🔍 Resultados de Búsqueda ({len(filtered_tickets)} tickets)',
+        color=0x3498db
+    )
+
+    for ticket_id, ticket_info in filtered_tickets[:10]:  # Limitar a 10 resultados
+        status_emoji = '🟢' if ticket_info['status'] == 'open' else '🔴'
+        priority_emoji = {
+            'urgent': '🔴',
+            'high': '🟠',
+            'medium': '🟡',
+            'low': '🟢'
+        }.get(ticket_info['priority'], '🟡')
+
+        embed.add_field(
+            name=f"{ticket_info['category_emoji']} {ticket_info['category_name']} | {status_emoji} {ticket_info['status'].title()}",
+            value=f"Usuario: {ticket_info['user_name']}\nPrioridad: {priority_emoji} {ticket_info['priority'].title()}\nID: {ticket_id}",
+            inline=False
+        )
+
+    if len(filtered_tickets) > 10:
+        embed.set_footer(text=f'Mostrando 10 de {len(filtered_tickets)} resultados')
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    logger.info(f'Búsqueda de tickets realizada por {interaction.user.name}: {len(filtered_tickets)} resultados')
+
+@bot.tree.command(name='ticket_stats', description='Muestra estadísticas del sistema de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def ticket_stats(interaction: discord.Interaction):
+    server_id = str(interaction.guild.id)
+
+    if 'servers' not in data or server_id not in data['servers'] or 'tickets' not in data['servers'][server_id]:
+        await interaction.response.send_message('❌ No hay tickets en este servidor', ephemeral=True)
+        return
+
+    tickets = data['servers'][server_id]['tickets']
+
+    # Calcular estadísticas
+    total_tickets = len(tickets)
+    open_tickets = sum(1 for t in tickets.values() if t['status'] == 'open')
+    closed_tickets = sum(1 for t in tickets.values() if t['status'] == 'closed')
+
+    # Estadísticas por categoría
+    category_stats = {}
+    for ticket in tickets.values():
+        cat_name = ticket['category_name']
+        category_stats[cat_name] = category_stats.get(cat_name, 0) + 1
+
+    # Estadísticas por prioridad
+    priority_stats = {'urgent': 0, 'high': 0, 'medium': 0, 'low': 0}
+    for ticket in tickets.values():
+        priority = ticket['priority']
+        if priority in priority_stats:
+            priority_stats[priority] += 1
+
+    # Crear embed con estadísticas
+    embed = discord.Embed(
+        title='📊 Estadísticas del Sistema de Tickets',
+        description=f'Estadísticas actualizadas del servidor {interaction.guild.name}',
+        color=0x3498db
+    )
+
+    embed.add_field(name='📈 Total de Tickets', value=str(total_tickets), inline=True)
+    embed.add_field(name='🟢 Abiertos', value=str(open_tickets), inline=True)
+    embed.add_field(name='🔴 Cerrados', value=str(closed_tickets), inline=True)
+
+    # Categorías más populares
+    if category_stats:
+        top_categories = sorted(category_stats.items(), key=lambda x: x[1], reverse=True)[:3]
+        categories_text = '\n'.join([f"{cat}: {count}" for cat, count in top_categories])
+        embed.add_field(name='🏆 Categorías Populares', value=categories_text, inline=False)
+
+    # Distribución de prioridades
+    priority_text = (
+        f"🔴 Urgente: {priority_stats['urgent']}\n"
+        f"🟠 Alta: {priority_stats['high']}\n"
+        f"🟡 Media: {priority_stats['medium']}\n"
+        f"🟢 Baja: {priority_stats['low']}"
+    )
+    embed.add_field(name='🎯 Distribución de Prioridades', value=priority_text, inline=False)
+
+    embed.set_footer(text=f'Actualizado: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+    logger.info(f'Estadísticas de tickets solicitadas por {interaction.user.name}')
 
 @bot.tree.command(name='ticket_send', description='Envía el panel de tickets al canal actual')
 @discord.app_commands.checks.has_permissions(administrator=True)
