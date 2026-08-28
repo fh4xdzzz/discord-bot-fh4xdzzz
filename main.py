@@ -437,16 +437,21 @@ class VerificationView(discord.ui.View):
         server_id = str(interaction.guild.id)
         user_id = str(interaction.user.id)
 
-        # Verificar que el sistema de verificación esté configurado
-        if 'servers' not in data or server_id not in data['servers']:
-            await interaction.response.send_message('❌ Error: Sistema de verificación no configurado', ephemeral=True)
-            return
+        # Inicializar estructura del servidor si no existe
+        if 'servers' not in data:
+            data['servers'] = {}
+        if server_id not in data['servers']:
+            data['servers'][server_id] = {}
 
+        # Buscar rol de verificación (prioridad: servidor específico -> global)
         server_verification_role_id = data['servers'][server_id].get('verification_role')
+        if not server_verification_role_id:
+            server_verification_role_id = data['config'].get('verification_role')
+
         server_verified_users = data['servers'][server_id].get('verified_users', [])
 
         if not server_verification_role_id:
-            await interaction.response.send_message('❌ Sistema de verificación no configurado', ephemeral=True)
+            await interaction.response.send_message('❌ Sistema de verificación no configurado. Usa `/create_verification_message` para configurarlo.', ephemeral=True)
             return
 
         # Verificar que no sea un bot
