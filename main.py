@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timedelta
 import requests
 import re
+import io
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
@@ -2419,64 +2420,137 @@ class TicketConfigModal(discord.ui.Modal, title='Configurar Ticket'):
         style=discord.TextStyle.long
     )
 
-    button1_label = discord.ui.TextInput(
-        label='Botón 1',
-        placeholder='Ej: Report',
-        default='Report',
+    # Categoría 1
+    cat1_name = discord.ui.TextInput(
+        label='Categoría 1 (Nombre)',
+        placeholder='Ej: Soporte',
+        default='Soporte',
         required=True,
         max_length=50
     )
 
-    button2_label = discord.ui.TextInput(
-        label='Botón 2',
-        placeholder='Ej: Pregunta',
-        default='Pregunta',
+    cat1_emoji = discord.ui.TextInput(
+        label='Categoría 1 (Emoji)',
+        placeholder='Ej: 🛠️',
+        default='🛠️',
+        required=True,
+        max_length=10
+    )
+
+    cat1_id = discord.ui.TextInput(
+        label='Categoría 1 (ID único)',
+        placeholder='Ej: support',
+        default='support',
+        required=True,
+        max_length=20
+    )
+
+    # Categoría 2
+    cat2_name = discord.ui.TextInput(
+        label='Categoría 2 (Nombre)',
+        placeholder='Ej: Reporte',
+        default='Reporte',
         required=False,
         max_length=50
     )
 
-    button3_label = discord.ui.TextInput(
-        label='Botón 3',
-        placeholder='Ej: Postulación',
-        default='Postulación',
+    cat2_emoji = discord.ui.TextInput(
+        label='Categoría 2 (Emoji)',
+        placeholder='Ej: 📢',
+        default='📢',
+        required=False,
+        max_length=10
+    )
+
+    cat2_id = discord.ui.TextInput(
+        label='Categoría 2 (ID único)',
+        placeholder='Ej: report',
+        default='report',
+        required=False,
+        max_length=20
+    )
+
+    # Categoría 3
+    cat3_name = discord.ui.TextInput(
+        label='Categoría 3 (Nombre)',
+        placeholder='Ej: Sugerencia',
+        default='Sugerencia',
         required=False,
         max_length=50
+    )
+
+    cat3_emoji = discord.ui.TextInput(
+        label='Categoría 3 (Emoji)',
+        placeholder='Ej: 💡',
+        default='💡',
+        required=False,
+        max_length=10
+    )
+
+    cat3_id = discord.ui.TextInput(
+        label='Categoría 3 (ID único)',
+        placeholder='Ej: suggestion',
+        default='suggestion',
+        required=False,
+        max_length=20
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Guardar configuración temporal
+        # Guardar configuración temporal con categorías mejoradas
         server_id = str(interaction.guild.id)
         ticket_configs[server_id] = {
             'title': self.title_input.value,
             'description': self.description_input.value,
-            'buttons': [
-                self.button1_label.value,
-                self.button2_label.value if self.button2_label.value else None,
-                self.button3_label.value if self.button3_label.value else None
+            'categories': [
+                {
+                    'name': self.cat1_name.value,
+                    'emoji': self.cat1_emoji.value,
+                    'id': self.cat1_id.value
+                }
             ]
         }
+
+        # Agregar categoría 2 si está configurada
+        if self.cat2_name.value:
+            ticket_configs[server_id]['categories'].append({
+                'name': self.cat2_name.value,
+                'emoji': self.cat2_emoji.value,
+                'id': self.cat2_id.value
+            })
+
+        # Agregar categoría 3 si está configurada
+        if self.cat3_name.value:
+            ticket_configs[server_id]['categories'].append({
+                'name': self.cat3_name.value,
+                'emoji': self.cat3_emoji.value,
+                'id': self.cat3_id.value
+            })
 
         await interaction.response.send_message('✅ Configuración guardada temporalmente. Usa `/ticket_send` para enviarla al canal.', ephemeral=True)
 
 class TicketPanelView(discord.ui.View):
-    """Vista del panel de tickets con botones personalizados"""
+    """Vista del panel de tickets con categorías mejoradas"""
     def __init__(self, config):
         super().__init__(timeout=None)
         self.config = config
 
-        # Agregar botones dinámicamente
-        for i, button_label in enumerate(config['buttons']):
-            if button_label:
+        # Agregar botones dinámicamente con emojis
+        for i, category in enumerate(config['categories']):
+            if category and category.get('name'):
+                label = f"{category.get('emoji', '🎫')} {category['name']}"
                 style = discord.ButtonStyle.primary if i == 0 else discord.ButtonStyle.secondary
-                button = discord.ui.Button(label=button_label, style=style, custom_id=f'ticket_{i}')
-                button.callback = self.create_button_callback(button_label)
+                button = discord.ui.Button(label=label, style=style, custom_id=f'ticket_{category["id"]}')
+                button.callback = self.create_button_callback(category)
                 self.add_item(button)
 
-    def create_button_callback(self, button_label):
+    def create_button_callback(self, category):
         async def callback(interaction: discord.Interaction):
-            # Crear ticket
+            # Crear ticket con información de categoría mejorada
             server_id = str(interaction.guild.id)
-            channel_name = f'ticket-{interaction.user.name}'.lower().replace(' ', '-')
+            category_name = category['name']
+            category_emoji = category.get('emoji', '🎫')
+            category_id = category['id']
+            channel_name = f'ticket-{category_id}-{interaction.user.name}'.lower().replace(' ', '-')
 
             try:
                 # Crear canal privado con permisos específicos
@@ -2491,23 +2565,55 @@ class TicketPanelView(discord.ui.View):
                     if role.permissions.administrator:
                         overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
 
-                category = interaction.guild.get_channel(get_server_setting(interaction.guild.id, 'ticket_category'))
+                category_channel = interaction.guild.get_channel(get_server_setting(interaction.guild.id, 'ticket_category'))
                 ticket_channel = await interaction.guild.create_text_channel(
                     name=channel_name,
-                    category=category,
+                    category=category_channel,
                     overwrites=overwrites,
                     reason=f'Ticket creado por {interaction.user.name}'
                 )
 
+                # Guardar información del ticket en el servidor
+                if 'servers' not in data:
+                    data['servers'] = {}
+                if server_id not in data['servers']:
+                    data['servers'][server_id] = {}
+                if 'tickets' not in data['servers'][server_id]:
+                    data['servers'][server_id]['tickets'] = {}
+
+                ticket_info = {
+                    'channel_id': str(ticket_channel.id),
+                    'channel_name': channel_name,
+                    'user_id': str(interaction.user.id),
+                    'user_name': interaction.user.name,
+                    'category_id': category_id,
+                    'category_name': category_name,
+                    'category_emoji': category_emoji,
+                    'status': 'open',
+                    'priority': 'medium',  # Prioridad por defecto
+                    'created_at': datetime.now().isoformat(),
+                    'closed_at': None,
+                    'closed_by': None,
+                    'claimed_by': None,
+                    'claimed_at': None,
+                    'transcript': [],
+                    'additional_users': []
+                }
+
+                data['servers'][server_id]['tickets'][str(ticket_channel.id)] = ticket_info
+                save_data()
+
                 # Enviar mensaje de bienvenida con botones de control
                 embed = discord.Embed(
-                    title=f'🎫 Ticket: {button_label}',
+                    title=f'{category_emoji} Ticket: {category_name}',
                     description=f'Hola {interaction.user.mention}.\n\nGracias por contactar con soporte.\nUn miembro del equipo te atenderá lo antes posible.',
                     color=0x3498db
                 )
-                embed.add_field(name='Tipo', value=button_label, inline=True)
+                embed.add_field(name='Categoría', value=f'{category_emoji} {category_name}', inline=True)
                 embed.add_field(name='Usuario', value=interaction.user.mention, inline=True)
-                embed.set_footer(text=f'Creado el {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+                embed.add_field(name='Prioridad', value='🟡 Media', inline=True)
+                embed.add_field(name='Estado', value='🟢 Abierto', inline=True)
+                embed.set_footer(text=f'Creado el {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} | ID: {ticket_channel.id}')
 
                 # Crear vista con botones de control para administradores
                 view = TicketControlView()
@@ -2515,7 +2621,7 @@ class TicketPanelView(discord.ui.View):
                 await ticket_channel.send(content=interaction.user.mention, embed=embed, view=view)
 
                 await interaction.response.send_message(f'✅ Ticket creado: {ticket_channel.mention}', ephemeral=True)
-                logger.info(f'Ticket creado: {button_label} por {interaction.user.name}')
+                logger.info(f'Ticket creado: {category_name} ({category_id}) por {interaction.user.name}')
 
             except Exception as e:
                 logger.error(f'Error al crear ticket: {e}')
@@ -2558,6 +2664,22 @@ class TicketControlView(discord.ui.View):
         )
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+    @discord.ui.button(label='🎯 Prioridad', style=discord.ButtonStyle.secondary)
+    async def priority_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar que sea administrador
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
+            return
+
+        # Mostrar opciones de prioridad
+        view = PriorityView()
+        embed = discord.Embed(
+            title='🎯 Cambiar Prioridad del Ticket',
+            description='Selecciona la nueva prioridad del ticket:',
+            color=0x3498db
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
     @discord.ui.button(label='➕ Añadir miembro', style=discord.ButtonStyle.secondary)
     async def add_member_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Verificar que sea administrador
@@ -2566,6 +2688,117 @@ class TicketControlView(discord.ui.View):
             return
 
         await interaction.response.send_message('💡 Usa `/add_role_to_user @usuario` para agregar un miembro al ticket', ephemeral=True)
+
+    @discord.ui.button(label='📄 Exportar', style=discord.ButtonStyle.secondary)
+    async def export_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Verificar que sea administrador
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
+            return
+
+        # Exportar transcript del ticket
+        try:
+            server_id = str(interaction.guild.id)
+            channel_id = str(interaction.channel.id)
+
+            # Obtener información del ticket
+            ticket_info = None
+            if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+                ticket_info = data['servers'][server_id]['tickets'].get(channel_id)
+
+            if not ticket_info:
+                await interaction.response.send_message('❌ No se encontró información del ticket', ephemeral=True)
+                return
+
+            # Generar transcript
+            transcript_lines = []
+            transcript_lines.append(f"=== TRANSCRIPT DEL TICKET ===")
+            transcript_lines.append(f"ID del Canal: {channel_id}")
+            transcript_lines.append(f"Usuario: {ticket_info['user_name']} (ID: {ticket_info['user_id']})")
+            transcript_lines.append(f"Categoría: {ticket_info['category_emoji']} {ticket_info['category_name']}")
+            transcript_lines.append(f"Prioridad: {ticket_info['priority']}")
+            transcript_lines.append(f"Estado: {ticket_info['status']}")
+            transcript_lines.append(f"Creado: {ticket_info['created_at']}")
+            if ticket_info.get('closed_at'):
+                transcript_lines.append(f"Cerrado: {ticket_info['closed_at']}")
+            transcript_lines.append(f"\n=== MENSAJES ===\n")
+
+            # Obtener mensajes del canal
+            async for msg in interaction.channel.history(limit=None, oldest_first=True):
+                author_name = msg.author.name
+                author_id = str(msg.author.id)
+                timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                content = msg.content or "[Contenido vacío o embed]"
+
+                transcript_lines.append(f"[{timestamp}] {author_name} (ID: {author_id}):")
+                transcript_lines.append(f"{content}")
+                transcript_lines.append("")
+
+            transcript_content = "\n".join(transcript_lines)
+
+            # Crear archivo
+            transcript_file = discord.File(
+                fp=io.StringIO(transcript_content),
+                filename=f"transcript_ticket_{channel_id}.txt"
+            )
+
+            await interaction.response.send_message("📄 Transcript exportado", file=transcript_file, ephemeral=True)
+            logger.info(f'Transcript exportado del ticket {channel_id} por {interaction.user.name}')
+
+        except Exception as e:
+            logger.error(f'Error al exportar transcript: {e}')
+            await interaction.response.send_message(f'❌ Error al exportar transcript: {e}', ephemeral=True)
+
+class PriorityView(discord.ui.View):
+    """Vista para cambiar la prioridad del ticket"""
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label='🔴 Urgente', style=discord.ButtonStyle.danger)
+    async def urgent_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.change_priority(interaction, 'urgent', '🔴 Urgente')
+
+    @discord.ui.button(label='🟠 Alta', style=discord.ButtonStyle.primary)
+    async def high_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.change_priority(interaction, 'high', '🟠 Alta')
+
+    @discord.ui.button(label='🟡 Media', style=discord.ButtonStyle.secondary)
+    async def medium_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.change_priority(interaction, 'medium', '🟡 Media')
+
+    @discord.ui.button(label='🟢 Baja', style=discord.ButtonStyle.success)
+    async def low_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.change_priority(interaction, 'low', '🟢 Baja')
+
+    async def change_priority(self, interaction: discord.Interaction, priority: str, display_name: str):
+        try:
+            server_id = str(interaction.guild.id)
+            channel_id = str(interaction.channel.id)
+
+            # Actualizar prioridad en los datos
+            if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+                if channel_id in data['servers'][server_id]['tickets']:
+                    data['servers'][server_id]['tickets'][channel_id]['priority'] = priority
+                    save_data()
+
+            # Actualizar mensaje del ticket
+            async for msg in interaction.channel.history(limit=10):
+                if msg.author == bot.user and msg.embeds:
+                    embed = msg.embeds[0]
+                    # Actualizar campo de prioridad
+                    for i, field in enumerate(embed.fields):
+                        if field.name == 'Prioridad':
+                            embed.set_field_at(i, name='Prioridad', value=display_name, inline=True)
+                            break
+                    await msg.edit(embed=embed)
+                    break
+
+            await interaction.response.edit_message(content=f'✅ Prioridad cambiada a {display_name}', embed=None, view=None)
+            logger.info(f'Prioridad del ticket {channel_id} cambiada a {priority} por {interaction.user.name}')
+
+        except Exception as e:
+            logger.error(f'Error al cambiar prioridad: {e}')
+            await interaction.response.edit_message(content=f'❌ Error al cambiar prioridad: {e}', embed=None, view=None)
 
 class ConfirmCloseView(discord.ui.View):
     """Vista de confirmación de cierre"""
@@ -2576,9 +2809,20 @@ class ConfirmCloseView(discord.ui.View):
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content='✅ Ticket cerrado', embed=None, view=None)
 
-        # Deshabilitar vista del ticket y eliminar canal
+        # Deshabilitar vista del ticket, actualizar estado y eliminar canal
         channel = interaction.channel
         try:
+            # Actualizar estado del ticket en los datos
+            server_id = str(interaction.guild.id)
+            channel_id = str(channel.id)
+
+            if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+                if channel_id in data['servers'][server_id]['tickets']:
+                    data['servers'][server_id]['tickets'][channel_id]['status'] = 'closed'
+                    data['servers'][server_id]['tickets'][channel_id]['closed_at'] = datetime.now().isoformat()
+                    data['servers'][server_id]['tickets'][channel_id]['closed_by'] = str(interaction.user.id)
+                    save_data()
+
             async for msg in channel.history(limit=10):
                 if msg.author == bot.user and msg.components:
                     await msg.edit(view=None)
@@ -2620,17 +2864,20 @@ async def ticket_send(interaction: discord.Interaction):
 
     config = ticket_configs[server_id]
 
-    # Crear embed
+    # Crear embed con categorías
     embed = discord.Embed(
         title=config['title'],
         description=config['description'],
         color=0x3498db
     )
 
+    # Agregar lista de categorías disponibles
+    categories_list = '\n'.join([f"{cat['emoji']} {cat['name']}" for cat in config['categories']])
+    embed.add_field(name='📋 Categorías Disponibles', value=categories_list, inline=False)
     embed.add_field(name='⚠️ Advertencia', value='No abuses del sistema de tickets. El mal uso puede resultar en sanciones.', inline=False)
-    embed.set_footer(text='Sistema de Tickets')
+    embed.set_footer(text='Sistema de Tickets Profesional')
 
-    # Crear vista con botones
+    # Crear vista con botones de categorías
     view = TicketPanelView(config)
 
     await interaction.response.send_message(embed=embed, view=view)
