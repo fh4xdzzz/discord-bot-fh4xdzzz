@@ -2933,6 +2933,7 @@ async def level(interaction: discord.Interaction):
         return
 
     server_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
 
     # Obtener usuarios del servidor específico
     if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
@@ -2945,16 +2946,16 @@ async def level(interaction: discord.Interaction):
         level = user_data['level']
         xp = user_data['xp']
         xp_needed = level * 100
-        
+
         embed = discord.Embed(
             title=f'📊 Nivel de {interaction.user.name}',
             color=0xFFD700
         )
-        
+
         embed.add_field(name='Nivel', value=str(level), inline=True)
         embed.add_field(name='XP', value=f'{xp}/{xp_needed}', inline=True)
         embed.add_field(name='Progreso', value=f'{(xp/xp_needed)*100:.1f}%', inline=True)
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         await interaction.response.send_message('Aún no tienes nivel. ¡Envía mensajes para ganar XP!', ephemeral=True)
