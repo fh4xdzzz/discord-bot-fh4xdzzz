@@ -2530,9 +2530,12 @@ class TicketControlView(discord.ui.View):
             await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
             return
 
-        # Enviar mensaje visible para todos en el canal
-        await interaction.response.send_message(f'👤 El ticket fue reclamado por {interaction.user.mention}', ephemeral=False)
-        logger.info(f'Ticket reclamado por {interaction.user.name}')
+        # Obtener el rol más alto del usuario
+        top_role = interaction.user.top_role.name if interaction.user.top_role else "Sin rol"
+
+        # Enviar mensaje visible para todos en el canal con nombre y rol
+        await interaction.response.send_message(f'👤 El ticket fue reclamado por {interaction.user.mention} ({top_role})', ephemeral=False)
+        logger.info(f'Ticket reclamado por {interaction.user.name} ({top_role})')
 
     @discord.ui.button(label='🔒 Cerrar', style=discord.ButtonStyle.danger)
     async def close_button(self, interaction: discord.Interaction, button: discord.ui.Button):
