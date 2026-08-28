@@ -355,34 +355,34 @@ class GiveawayJoinView(discord.ui.View):
     def __init__(self, giveaway_id: str):
         super().__init__(timeout=None)
         self.giveaway_id = giveaway_id
-    
+
     @discord.ui.button(label='🎉 Participar', style=discord.ButtonStyle.primary, custom_id='giveaway_join')
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         server_id = str(interaction.guild.id)
-        
+
         # Verificar que el sorteo exista y esté activo
         if 'servers' not in data or server_id not in data['servers']:
             await interaction.response.send_message('❌ Error: Servidor no encontrado', ephemeral=True)
             return
-        
+
         if 'giveaways' not in data['servers'][server_id]:
             await interaction.response.send_message('❌ No hay sorteos activos', ephemeral=True)
             return
-        
+
         if self.giveaway_id not in data['servers'][server_id]['giveaways']:
             await interaction.response.send_message('❌ Este sorteo no existe', ephemeral=True)
             return
-        
+
         giveaway = data['servers'][server_id]['giveaways'][self.giveaway_id]
-        
+
         # Verificar que el sorteo esté activo
         if giveaway.get('status') != 'active':
             await interaction.response.send_message('❌ Este sorteo ya finalizó', ephemeral=True)
             return
-        
+
         # Verificar requisitos de participación
         user_id = str(interaction.user.id)
-        
+
         # Verificar rol de participante si está configurado
         participant_role_id = get_server_setting(interaction.guild.id, 'giveaway_participant_role')
         if participant_role_id:
@@ -390,41 +390,104 @@ class GiveawayJoinView(discord.ui.View):
             if participant_role and participant_role not in interaction.user.roles:
                 await interaction.response.send_message('❌ No tienes el rol requerido para participar', ephemeral=True)
                 return
-        
+
         # Verificar que no sea un bot
         if interaction.user.bot:
             await interaction.response.send_message('❌ Los bots no pueden participar', ephemeral=True)
             return
-        
+
         # Verificar si ya participa
         if user_id in giveaway['participants']:
             await interaction.response.send_message('✅ Ya estás participando en este sorteo', ephemeral=True)
             return
-        
+
         # Agregar participante
         giveaway['participants'].append(user_id)
         data['servers'][server_id]['giveaways'][self.giveaway_id] = giveaway
-        
+
         # Actualizar contador inmediatamente
         try:
             channel = bot.get_channel(giveaway['channel_id'])
             if channel:
                 message = await channel.fetch_message(int(giveaway['message_id']))
                 embed = message.embeds[0]
-                
+
                 # Actualizar campo de participantes
                 for i, field in enumerate(embed.fields):
                     if field.name == '👥 Participantes':
                         embed.set_field_at(i, name='👥 Participantes', value=f"**{len(giveaway['participants'])}**", inline=True)
                         break
-                
+
                 await message.edit(embed=embed)
                 logger.info(f'{interaction.user.name} se unió al sorteo {giveaway["prize"]}')
         except Exception as e:
             logger.error(f'Error al actualizar contador: {e}')
-        
+
         save_data()
         await interaction.response.send_message('✅ ¡Te has unido al sorteo!', ephemeral=True)
+
+class VerificationView(discord.ui.View):
+    """Vista de verificación con botón profesional"""
+    def __init__(self, message_id: str):
+        super().__init__(timeout=None)
+        self.message_id = message_id
+
+    @discord.ui.button(label='✅ Verificar', style=discord.ButtonStyle.success, custom_id='verify_btn')
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        server_id = str(interaction.guild.id)
+        user_id = str(interaction.user.id)
+
+        # Verificar que el sistema de verificación esté configurado
+        if 'servers' not in data or server_id not in data['servers']:
+            await interaction.response.send_message('❌ Error: Sistema de verificación no configurado', ephemeral=True)
+            return
+
+        server_verification_role_id = data['servers'][server_id].get('verification_role')
+        server_verified_users = data['servers'][server_id].get('verified_users', [])
+
+        if not server_verification_role_id:
+            await interaction.response.send_message('❌ Sistema de verificación no configurado', ephemeral=True)
+            return
+
+        # Verificar que no sea un bot
+        if interaction.user.bot:
+            await interaction.response.send_message('❌ Los bots no pueden verificarse', ephemeral=True)
+            return
+
+        # Verificar si ya está verificado
+        if user_id in server_verified_users:
+            await interaction.response.send_message('✅ Ya estás verificado', ephemeral=True)
+            return
+
+        # Verificar usuario
+        verification_role = interaction.guild.get_role(server_verification_role_id)
+        if verification_role:
+            await interaction.user.add_roles(verification_role)
+
+        # Agregar a lista de verificados
+        server_verified_users.append(user_id)
+        data['servers'][server_id]['verified_users'] = server_verified_users
+        save_data()
+
+        # Actualizar contador de verificados en el mensaje
+        try:
+            channel = bot.get_channel(int(self.message_id))
+            if channel:
+                message = await channel.fetch_message(int(self.message_id))
+                embed = message.embeds[0]
+
+                # Actualizar campo de verificados
+                for i, field in enumerate(embed.fields):
+                    if field.name == '✅ Verificados':
+                        embed.set_field_at(i, name='✅ Verificados', value=f"**{len(server_verified_users)}**", inline=True)
+                        break
+
+                await message.edit(embed=embed)
+                logger.info(f'{interaction.user.name} se verificó en {interaction.guild.name}')
+        except Exception as e:
+            logger.error(f'Error al actualizar contador de verificados: {e}')
+
+        await interaction.response.send_message('✅ ¡Verificación completada! Ahora tienes acceso completo al servidor.', ephemeral=True)
 
 # Vista para mostrar opciones de administración de sorteos
 class GiveawayAdminView(discord.ui.View):
@@ -3622,15 +3685,18 @@ async def create_verification_message(interaction: discord.Interaction, role: di
             color=0xFF6B6B
         )
 
-        embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Eventos\n✅ Acceso completo', inline=False)
+        embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
         embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ para obtener acceso', inline=False)
+        embed.add_field(name='✅ Verificados', value='**0**', inline=True)
         embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
         embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
         embed.set_thumbnail(url=bot.user.display_avatar.url)
 
-        message = await channel.send(embed=embed)
-        await message.add_reaction('✅')
+        # Crear vista con botón de verificación
+        view = VerificationView(str(channel.id))
+
+        message = await channel.send(embed=embed, view=view)
 
         # Guardar el message_id específico del servidor
         data['servers'][server_id]['verification_message_id'] = message.id
