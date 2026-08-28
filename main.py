@@ -951,7 +951,7 @@ async def on_ready():
     for guild in bot.guilds:
         try:
             guild_synced = await bot.tree.sync(guild=guild)
-            logger.info(f'Sincronizados {len(guild_synced)} comandos en servidor {guild.name}')
+            # logger.info(f'Sincronizados {len(guild_synced)} comandos en servidor {guild.name}')
         except Exception as e:
             logger.error(f'Error al sincronizar comandos en servidor {guild.name}: {e}')
 
