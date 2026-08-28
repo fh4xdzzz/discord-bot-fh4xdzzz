@@ -2530,7 +2530,8 @@ class TicketControlView(discord.ui.View):
             await interaction.response.send_message('❌ Solo los administradores pueden usar este botón', ephemeral=True)
             return
 
-        await interaction.response.send_message(f'👤 Ticket reclamado por {interaction.user.mention}', ephemeral=True)
+        # Enviar mensaje visible para todos en el canal
+        await interaction.response.send_message(f'👤 El ticket fue reclamado por {interaction.user.mention}', ephemeral=False)
         logger.info(f'Ticket reclamado por {interaction.user.name}')
 
     @discord.ui.button(label='🔒 Cerrar', style=discord.ButtonStyle.danger)
