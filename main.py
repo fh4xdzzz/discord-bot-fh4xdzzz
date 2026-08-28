@@ -428,8 +428,9 @@ class GiveawayJoinView(discord.ui.View):
 
 class VerificationView(discord.ui.View):
     """Vista de verificación con botón profesional"""
-    def __init__(self, message_id: str):
+    def __init__(self, channel_id: str, message_id: str = None):
         super().__init__(timeout=None)
+        self.channel_id = channel_id
         self.message_id = message_id
 
     @discord.ui.button(label='✅ Verificar', style=discord.ButtonStyle.success, custom_id='verify_btn')
@@ -478,8 +479,8 @@ class VerificationView(discord.ui.View):
 
         # Actualizar contador de verificados en el mensaje
         try:
-            channel = bot.get_channel(int(self.message_id))
-            if channel:
+            channel = bot.get_channel(int(self.channel_id))
+            if channel and self.message_id:
                 message = await channel.fetch_message(int(self.message_id))
                 embed = message.embeds[0]
 
@@ -3700,10 +3701,13 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
         embed.set_thumbnail(url=bot.user.display_avatar.url)
 
-        # Crear vista con botón de verificación
-        view = VerificationView(str(channel.id))
+        # Crear vista con botón de verificación (se actualiza después de crear el mensaje)
+        view = VerificationView(str(channel.id), None)
 
         message = await channel.send(embed=embed, view=view)
+
+        # Actualizar la vista con el ID del mensaje
+        view.message_id = str(message.id)
 
         # Guardar el message_id específico del servidor
         data['servers'][server_id]['verification_message_id'] = message.id
