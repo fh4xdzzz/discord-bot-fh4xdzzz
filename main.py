@@ -2566,13 +2566,20 @@ class ConfirmCloseView(discord.ui.View):
     @discord.ui.button(label='✅ Confirmar', style=discord.ButtonStyle.danger)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content='✅ Ticket cerrado', embed=None, view=None)
-        
-        # Deshabilitar vista del ticket
+
+        # Deshabilitar vista del ticket y eliminar canal
         channel = interaction.channel
-        async for msg in channel.history(limit=10):
-            if msg.author == bot.user and msg.components:
-                await msg.edit(view=None)
-                break
+        try:
+            async for msg in channel.history(limit=10):
+                if msg.author == bot.user and msg.components:
+                    await msg.edit(view=None)
+                    break
+
+            # Eliminar el canal del ticket
+            await channel.delete(reason='Ticket cerrado por confirmación')
+            logger.info(f'Canal de ticket eliminado: {channel.name}')
+        except Exception as e:
+            logger.error(f'Error al eliminar canal de ticket: {e}')
 
     @discord.ui.button(label='❌ Cancelar', style=discord.ButtonStyle.secondary)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
