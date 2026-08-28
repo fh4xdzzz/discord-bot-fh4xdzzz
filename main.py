@@ -2313,79 +2313,33 @@ class HelpView(discord.ui.View):
         elif category == 'info':
             embed.add_field(name='ℹ️ Información', value='/ping - Muestra la latencia del bot\n/info - Muestra información del servidor\n/ayuda - Muestra este panel de ayuda\n/bot_servers - Muestra los servidores del bot', inline=False)
         
-        embed.set_footer(text='Sistema de Ayuda v3.0 - Panel Interactivo')
+        embed.set_footer(text='Sistema de Ayuda v4.0 - Panel Interactivo')
         embed.set_thumbnail(url=bot.user.display_avatar.url)
         return embed
-    
-    @discord.ui.button(label='📊 Niveles', style=discord.ButtonStyle.primary)
-    async def niveles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('niveles')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🏆 Ranking', style=discord.ButtonStyle.primary)
-    async def ranking_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('ranking')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🎭 Auto-Roles', style=discord.ButtonStyle.primary)
-    async def autoroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('autoroles')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='⭐ Roles por Nivel', style=discord.ButtonStyle.primary)
-    async def levelroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('levelroles')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🎭 Roles Reaccionables', style=discord.ButtonStyle.primary)
-    async def reactionroles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('reactionroles')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🔒 Verificación', style=discord.ButtonStyle.primary)
-    async def verificacion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('verificacion')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🎉 Sorteos', style=discord.ButtonStyle.primary)
-    async def sorteos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('sorteos')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🎫 Tickets', style=discord.ButtonStyle.primary)
-    async def tickets_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('tickets')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🔔 Notificaciones', style=discord.ButtonStyle.primary)
-    async def notificaciones_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('notificaciones')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='📺 Streams', style=discord.ButtonStyle.primary)
-    async def streams_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('streams')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    
-    @discord.ui.button(label='⚙️ Configuración', style=discord.ButtonStyle.primary)
-    async def configuracion_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('configuracion')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🔒 Filtro', style=discord.ButtonStyle.primary)
-    async def filtro_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('filtro')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='ℹ️ Información', style=discord.ButtonStyle.primary)
-    async def info_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('info')
-        await interaction.response.edit_message(embed=embed, view=self)
-    
-    @discord.ui.button(label='🏠 Inicio', style=discord.ButtonStyle.success)
-    async def home_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = self.create_embed('main')
+
+    @discord.ui.select(
+        placeholder='Selecciona una categoría...',
+        min_values=1,
+        max_values=1,
+        options=[
+            discord.SelectOption(label='📊 Niveles', value='niveles'),
+            discord.SelectOption(label='🏆 Ranking', value='ranking'),
+            discord.SelectOption(label='🎭 Auto-Roles', value='autoroles'),
+            discord.SelectOption(label='⭐ Roles por Nivel', value='levelroles'),
+            discord.SelectOption(label='🎭 Roles Reaccionables', value='reactionroles'),
+            discord.SelectOption(label='🔒 Verificación', value='verificacion'),
+            discord.SelectOption(label='🎉 Sorteos', value='sorteos'),
+            discord.SelectOption(label='🎫 Tickets', value='tickets'),
+            discord.SelectOption(label='🔔 Notificaciones', value='notificaciones'),
+            discord.SelectOption(label='📺 Streams', value='streams'),
+            discord.SelectOption(label='⚙️ Configuración', value='configuracion'),
+            discord.SelectOption(label='🔒 Filtro', value='filtro'),
+            discord.SelectOption(label='ℹ️ Información', value='info'),
+        ]
+    )
+    async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        category = select.values[0]
+        embed = self.create_embed(category)
         await interaction.response.edit_message(embed=embed, view=self)
 
 @bot.tree.command(name='ayuda', description='Muestra la lista de comandos del bot')
