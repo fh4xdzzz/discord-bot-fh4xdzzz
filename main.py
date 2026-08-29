@@ -2374,111 +2374,66 @@ class TicketConfigModal(discord.ui.Modal, title='Configurar Ticket'):
         style=discord.TextStyle.long
     )
 
-    # Categoría 1
-    cat1_name = discord.ui.TextInput(
-        label='Categoría 1 (Nombre)',
-        placeholder='Ej: Soporte',
-        default='Soporte',
+    # Categoría 1 (combinada)
+    cat1_combined = discord.ui.TextInput(
+        label='Categoría 1 (Formato: nombre|emoji|id)',
+        placeholder='Ej: Soporte|🛠️|support',
+        default='Soporte|🛠️|support',
         required=True,
-        max_length=50
+        max_length=100
     )
 
-    cat1_emoji = discord.ui.TextInput(
-        label='Categoría 1 (Emoji)',
-        placeholder='Ej: 🛠️',
-        default='🛠️',
-        required=True,
-        max_length=10
-    )
-
-    cat1_id = discord.ui.TextInput(
-        label='Categoría 1 (ID único)',
-        placeholder='Ej: support',
-        default='support',
-        required=True,
-        max_length=20
-    )
-
-    # Categoría 2
-    cat2_name = discord.ui.TextInput(
-        label='Categoría 2 (Nombre)',
-        placeholder='Ej: Reporte',
-        default='Reporte',
+    # Categoría 2 (combinada)
+    cat2_combined = discord.ui.TextInput(
+        label='Categoría 2 (Formato: nombre|emoji|id)',
+        placeholder='Ej: Reporte|📢|report',
+        default='Reporte|📢|report',
         required=False,
-        max_length=50
+        max_length=100
     )
 
-    cat2_emoji = discord.ui.TextInput(
-        label='Categoría 2 (Emoji)',
-        placeholder='Ej: 📢',
-        default='📢',
+    # Categoría 3 (combinada)
+    cat3_combined = discord.ui.TextInput(
+        label='Categoría 3 (Formato: nombre|emoji|id)',
+        placeholder='Ej: Sugerencia|💡|suggestion',
+        default='Sugerencia|💡|suggestion',
         required=False,
-        max_length=10
-    )
-
-    cat2_id = discord.ui.TextInput(
-        label='Categoría 2 (ID único)',
-        placeholder='Ej: report',
-        default='report',
-        required=False,
-        max_length=20
-    )
-
-    # Categoría 3
-    cat3_name = discord.ui.TextInput(
-        label='Categoría 3 (Nombre)',
-        placeholder='Ej: Sugerencia',
-        default='Sugerencia',
-        required=False,
-        max_length=50
-    )
-
-    cat3_emoji = discord.ui.TextInput(
-        label='Categoría 3 (Emoji)',
-        placeholder='Ej: 💡',
-        default='💡',
-        required=False,
-        max_length=10
-    )
-
-    cat3_id = discord.ui.TextInput(
-        label='Categoría 3 (ID único)',
-        placeholder='Ej: suggestion',
-        default='suggestion',
-        required=False,
-        max_length=20
+        max_length=100
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # Función para parsear categoría combinada
+        def parse_category(cat_string):
+            parts = cat_string.split('|')
+            if len(parts) == 3:
+                return {'name': parts[0].strip(), 'emoji': parts[1].strip(), 'id': parts[2].strip()}
+            return None
+
         # Guardar configuración temporal con categorías mejoradas
         server_id = str(interaction.guild.id)
+
+        cat1 = parse_category(self.cat1_combined.value)
+        if not cat1:
+            await interaction.response.send_message('❌ Formato incorrecto en Categoría 1. Usa: nombre|emoji|id', ephemeral=True)
+            return
+
         ticket_configs[server_id] = {
             'title': self.title_input.value,
             'description': self.description_input.value,
-            'categories': [
-                {
-                    'name': self.cat1_name.value,
-                    'emoji': self.cat1_emoji.value,
-                    'id': self.cat1_id.value
-                }
-            ]
+            'categories': [cat1]
         }
 
         # Agregar categoría 2 si está configurada
-        if self.cat2_name.value:
-            ticket_configs[server_id]['categories'].append({
-                'name': self.cat2_name.value,
-                'emoji': self.cat2_emoji.value,
-                'id': self.cat2_id.value
-            })
+        if self.cat2_combined.value:
+            cat2 = parse_category(self.cat2_combined.value)
+            if cat2:
+                ticket_configs[server_id]['categories'].append(cat2)
 
         # Agregar categoría 3 si está configurada
-        if self.cat3_name.value:
-            ticket_configs[server_id]['categories'].append({
-                'name': self.cat3_name.value,
-                'emoji': self.cat3_emoji.value,
-                'id': self.cat3_id.value
-            })
+        if self.cat3_combined.value:
+            cat3 = parse_category(self.cat3_combined.value)
+            if cat3:
+                ticket_configs[server_id]['categories'].append(cat3)
 
         await interaction.response.send_message('✅ Configuración guardada temporalmente. Usa `/ticket_send` para enviarla al canal.', ephemeral=True)
 
