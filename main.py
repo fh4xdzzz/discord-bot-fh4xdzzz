@@ -2454,8 +2454,22 @@ class TicketPanelView(discord.ui.View):
 
     def create_button_callback(self, category):
         async def callback(interaction: discord.Interaction):
-            # Crear ticket con información de categoría mejorada
+            # Verificar si el usuario ya tiene un ticket abierto
             server_id = str(interaction.guild.id)
+            user_id = str(interaction.user.id)
+
+            if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+                for ticket_id, ticket_info in data['servers'][server_id]['tickets'].items():
+                    if ticket_info['user_id'] == user_id and ticket_info['status'] == 'open':
+                        # El usuario ya tiene un ticket abierto
+                        existing_channel = bot.get_channel(int(ticket_id))
+                        if existing_channel:
+                            await interaction.response.send_message(f'❌ Ya tienes un ticket abierto: {existing_channel.mention}\n\nPor favor cierra ese ticket antes de crear otro.', ephemeral=True)
+                        else:
+                            await interaction.response.send_message('❌ Ya tienes un ticket abierto. Por favor ciérralo antes de crear otro.', ephemeral=True)
+                        return
+
+            # Crear ticket con información de categoría mejorada
             category_name = category['name']
             category_emoji = category.get('emoji', '🎫')
             category_id = category['id']
