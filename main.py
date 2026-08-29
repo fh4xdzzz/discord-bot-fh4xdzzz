@@ -2459,15 +2459,31 @@ class TicketPanelView(discord.ui.View):
             user_id = str(interaction.user.id)
 
             if 'servers' in data and server_id in data['servers'] and 'tickets' in data['servers'][server_id]:
+                # Verificar cada ticket abierto del usuario
+                open_tickets = []
                 for ticket_id, ticket_info in data['servers'][server_id]['tickets'].items():
                     if ticket_info['user_id'] == user_id and ticket_info['status'] == 'open':
-                        # El usuario ya tiene un ticket abierto
-                        existing_channel = bot.get_channel(int(ticket_id))
-                        if existing_channel:
-                            await interaction.response.send_message(f'❌ Ya tienes un ticket abierto: {existing_channel.mention}\n\nPor favor cierra ese ticket antes de crear otro.', ephemeral=True)
+                        # Verificar si el canal realmente existe
+                        channel = bot.get_channel(int(ticket_id))
+                        if channel:
+                            open_tickets.append((ticket_id, ticket_info))
                         else:
-                            await interaction.response.send_message('❌ Ya tienes un ticket abierto. Por favor ciérralo antes de crear otro.', ephemeral=True)
-                        return
+                            # El canal no existe, cerrar el ticket en los datos
+                            logger.info(f'Canal {ticket_id} no existe, cerrando ticket automáticamente')
+                            ticket_info['status'] = 'closed'
+                            ticket_info['closed_at'] = datetime.now().isoformat()
+                            ticket_info['closed_by'] = 'SYSTEM'
+                            data['servers'][server_id]['tickets'][ticket_id] = ticket_info
+                            save_data()
+
+                # Si hay tickets abiertos con canales existentes, mostrar error
+                if open_tickets:
+                    existing_channel = bot.get_channel(int(open_tickets[0][0]))
+                    if existing_channel:
+                        await interaction.response.send_message(f'❌ Ya tienes un ticket abierto: {existing_channel.mention}\n\nPor favor cierra ese ticket antes de crear otro.', ephemeral=True)
+                    else:
+                        await interaction.response.send_message('❌ Ya tienes un ticket abierto. Por favor ciérralo antes de crear otro.', ephemeral=True)
+                    return
 
             # Crear ticket con información de categoría mejorada
             category_name = category['name']
