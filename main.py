@@ -2280,7 +2280,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Verificación', value='/config_verification_channel, /create_verification_message, /manual_verify', inline=False)
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
-            embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
@@ -2301,7 +2301,7 @@ class HelpView(discord.ui.View):
         elif category == 'sorteos':
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create - Crea un nuevo sorteo\n/giveaway_end - Finaliza un sorteo manualmente\n/giveaway_reroll - Selecciona nuevo ganador\n/giveaway_list - Muestra sorteos activos\n/giveaway_config - Configura el sistema de sorteos', inline=False)
         elif category == 'tickets':
-            embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal actual\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
+            embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_panel_channel - Configura canal del panel\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal configurado\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
@@ -2475,12 +2475,19 @@ class TicketPanelView(discord.ui.View):
                         overwrites[role] = discord.PermissionOverwrite(read_messages=True, send_messages=True, view_channel=True)
 
                 category_channel = interaction.guild.get_channel(get_server_setting(interaction.guild.id, 'ticket_category'))
-                ticket_channel = await interaction.guild.create_text_channel(
-                    name=channel_name,
-                    category=category_channel,
-                    overwrites=overwrites,
-                    reason=f'Ticket creado por {interaction.user.name}'
-                )
+                if category_channel:
+                    ticket_channel = await interaction.guild.create_text_channel(
+                        name=channel_name,
+                        category=category_channel,
+                        overwrites=overwrites,
+                        reason=f'Ticket creado por {interaction.user.name}'
+                    )
+                else:
+                    ticket_channel = await interaction.guild.create_text_channel(
+                        name=channel_name,
+                        overwrites=overwrites,
+                        reason=f'Ticket creado por {interaction.user.name}'
+                    )
 
                 # Guardar información del ticket en el servidor
                 if 'servers' not in data:
@@ -2747,7 +2754,7 @@ class ConfirmCloseView(discord.ui.View):
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content='❌ Cancelado', embed=None, view=None)
 
-@bot.tree.command(name='ticket_channel', description='Configura el canal donde se crearán los tickets')
+@bot.tree.command(name='ticket_channel', description='Configura la categoría donde se crearán los tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
 @discord.app_commands.describe(category='Categoría de Discord donde se crearán los tickets')
 async def ticket_channel(interaction: discord.Interaction, category: discord.CategoryChannel):
@@ -2756,6 +2763,16 @@ async def ticket_channel(interaction: discord.Interaction, category: discord.Cat
 
     await interaction.response.send_message(f'✅ Categoría de tickets configurada: {category.mention}', ephemeral=True)
     logger.info(f'Categoría de tickets configurada: {category.name} por {interaction.user.name}')
+
+@bot.tree.command(name='ticket_panel_channel', description='Configura el canal donde se enviará el panel de tickets')
+@discord.app_commands.checks.has_permissions(administrator=True)
+@discord.app_commands.describe(channel='Canal de Discord donde se enviará el panel de tickets')
+async def ticket_panel_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    set_server_setting(interaction.guild.id, 'ticket_channel', channel.id)
+    save_data()
+
+    await interaction.response.send_message(f'✅ Canal del panel de tickets configurado: {channel.mention}', ephemeral=True)
+    logger.info(f'Canal del panel de tickets configurado: {channel.name} por {interaction.user.name}')
 
 @bot.tree.command(name='ticket_create_config', description='Crea una configuración para el panel de tickets')
 @discord.app_commands.checks.has_permissions(administrator=True)
@@ -2895,13 +2912,24 @@ async def ticket_stats(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
     logger.info(f'Estadísticas de tickets solicitadas por {interaction.user.name}')
 
-@bot.tree.command(name='ticket_send', description='Envía el panel de tickets al canal actual')
+@bot.tree.command(name='ticket_send', description='Envía el panel de tickets al canal configurado')
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def ticket_send(interaction: discord.Interaction):
     server_id = str(interaction.guild.id)
 
     if server_id not in ticket_configs:
         await interaction.response.send_message('❌ No hay configuración guardada. Usa `/ticket_create_config` primero.', ephemeral=True)
+        return
+
+    # Obtener el canal configurado para tickets
+    ticket_channel_id = get_server_setting(interaction.guild.id, 'ticket_channel')
+    if not ticket_channel_id:
+        await interaction.response.send_message('❌ No hay canal de tickets configurado. Usa `/ticket_channel` primero.', ephemeral=True)
+        return
+
+    ticket_channel = bot.get_channel(ticket_channel_id)
+    if not ticket_channel:
+        await interaction.response.send_message('❌ El canal configurado no existe o no es accesible.', ephemeral=True)
         return
 
     config = ticket_configs[server_id]
@@ -2922,9 +2950,10 @@ async def ticket_send(interaction: discord.Interaction):
     # Crear vista con botones de categorías
     view = TicketPanelView(config)
 
-    await interaction.response.send_message(embed=embed, view=view)
+    await ticket_channel.send(embed=embed, view=view)
+    await interaction.response.send_message(f'✅ Panel de tickets enviado a {ticket_channel.mention}', ephemeral=True)
 
-    logger.info(f'Panel de tickets enviado por {interaction.user.name}')
+    logger.info(f'Panel de tickets enviado por {interaction.user.name} al canal {ticket_channel.name}')
 
 # ==================== COMANDOS DE SORTEOS ====================
 
