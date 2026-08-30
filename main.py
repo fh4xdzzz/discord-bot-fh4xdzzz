@@ -977,7 +977,7 @@ async def on_ready():
 async def update_ranking_periodically():
     while True:
         try:
-            await asyncio.sleep(60)
+            await asyncio.sleep(300)
             # Actualizar ranking para cada servidor que tiene configuración
             if 'servers' in data:
                 for server_id, server_config in data['servers'].items():
@@ -987,7 +987,7 @@ async def update_ranking_periodically():
             await update_ranking()
         except Exception as e:
             logger.error(f'Error en actualización periódica: {e}')
-            await asyncio.sleep(60)  # Esperar antes de reintentar
+            await asyncio.sleep(300)  # Esperar antes de reintentar
 
 # Monitoreo periódico de streams
 async def check_streams_periodically():
@@ -1028,34 +1028,53 @@ async def update_ranking(guild_id=None):
 # Crear embed de ranking
 def create_ranking_embed(guild_id):
     server_id = str(guild_id)
-    
+
     # Obtener usuarios del servidor específico
     if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
         users = data['servers'][server_id]['users']
     else:
         users = data.get('users', {})  # Fallback a global
-    
-    sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:15]
-    
+
+    sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:10]
+
     embed = discord.Embed(
         title='🏆 Ranking de Niveles',
-        description='🔄 Actualizado cada 1 minuto',
+        description='🎯 Los usuarios más activos del servidor',
         color=0xFFD700
     )
-    
+
+    embed.set_thumbnail(url=bot.user.display_avatar.url)
+    embed.add_field(name='🔄 Actualización', value='Cada 5 minutos', inline=True)
+    embed.add_field(name='👥 Total Usuarios', value=str(len(users)), inline=True)
+
     if not sorted_users:
         embed.add_field(name='Sin usuarios', value='Aún no hay usuarios en el ranking', inline=False)
     else:
-        description = ''
         for i, (user_id, user_data) in enumerate(sorted_users):
             user = bot.get_user(int(user_id))
             username = user.name if user else 'Usuario desconocido'
+            level = user_data['level']
+            xp = user_data['xp']
+            
+            # Calcular XP para el siguiente nivel
+            xp_needed = (level * 100) - xp
+            xp_percentage = min(100, int((xp / (level * 100)) * 100)) if level > 0 else 100
+            
+            # Crear barra de progreso con emojis
+            progress_bars = '█' * (xp_percentage // 10) + '░' * (10 - (xp_percentage // 10))
+            
             medal = '🥇' if i == 0 else '🥈' if i == 1 else '🥉' if i == 2 else f'#{i + 1}'
-            description += f'{medal} **{username}** - Nivel {user_data["level"]} ({user_data["xp"]} XP)\n'
-        
-        embed.add_field(name='Top 15 Usuarios', value=description, inline=False)
-    
-    embed.set_footer(text=f'Última actualización: {datetime.now().strftime("%H:%M:%S")}')
+            
+            user_info = f'{medal} **{username}**\n'
+            user_info += f'📊 Nivel {level} | {xp} XP\n'
+            user_info += f'📈 Progreso: {progress_bars} {xp_percentage}%\n'
+            user_info += f'🎯 XP para siguiente nivel: {xp_needed}'
+            
+            embed.add_field(name=f'#{i + 1} {username}', value=user_info, inline=False)
+
+    embed.set_footer(text=f'Última actualización: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} | Sistema de Niveles')
+    embed.set_image(url=bot.user.display_avatar.url)
+
     return embed
 
 # Verificar streams
