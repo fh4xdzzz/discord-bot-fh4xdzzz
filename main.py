@@ -338,9 +338,11 @@ class GiveawayJoinView(discord.ui.View):
     def __init__(self, giveaway_id: str):
         super().__init__(timeout=None)
         self.giveaway_id = giveaway_id
+        self.giveaway_join_button = discord.ui.Button(label='🎉 Participar', style=discord.ButtonStyle.primary, custom_id=f'giveaway_join_{giveaway_id}')
+        self.giveaway_join_button.callback = self.join_button
+        self.add_item(self.giveaway_join_button)
 
-    @discord.ui.button(label='🎉 Participar', style=discord.ButtonStyle.primary, custom_id='giveaway_join')
-    async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def join_button(self, interaction: discord.Interaction):
         server_id = str(interaction.guild.id)
 
         # Verificar que el sorteo exista y esté activo
@@ -415,9 +417,12 @@ class VerificationView(discord.ui.View):
         super().__init__(timeout=None)
         self.channel_id = channel_id
         self.message_id = message_id
+        custom_id = f'verify_btn_{channel_id}_{message_id}' if message_id else 'verify_btn'
+        self.verify_button = discord.ui.Button(label='✅ Verificar', style=discord.ButtonStyle.success, custom_id=custom_id)
+        self.verify_button.callback = self.verify_button_callback
+        self.add_item(self.verify_button)
 
-    @discord.ui.button(label='✅ Verificar', style=discord.ButtonStyle.success, custom_id='verify_btn')
-    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def verify_button_callback(self, interaction: discord.Interaction):
         server_id = str(interaction.guild.id)
         user_id = str(interaction.user.id)
 
@@ -485,9 +490,11 @@ class GiveawayAdminView(discord.ui.View):
     def __init__(self, giveaway_id: str):
         super().__init__(timeout=None)
         self.giveaway_id = giveaway_id
-    
-    @discord.ui.button(label='🏁 Finalizar', style=discord.ButtonStyle.danger, custom_id='giveaway_end')
-    async def end_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.giveaway_end_button = discord.ui.Button(label='🏁 Finalizar', style=discord.ButtonStyle.danger, custom_id=f'giveaway_end_{giveaway_id}')
+        self.giveaway_end_button.callback = self.end_button
+        self.add_item(self.giveaway_end_button)
+
+    async def end_button(self, interaction: discord.Interaction):
         server_id = str(interaction.guild.id)
         
         # Verificar permisos
@@ -906,10 +913,24 @@ async def on_ready():
     logger.info(f'ID: {bot.user.id}')
     logger.info(f'Servidores: {len(bot.guilds)}')
 
-    # Registrar vistas persistentes
-    bot.add_view(GiveawayJoinView("dummy"))
-    bot.add_view(VerificationView("0", "0"))
-    logger.info('Vistas persistentes registradas')
+    # Registrar vistas persistentes para sorteos activos
+    if 'servers' in data:
+        for server_id, server_data in data['servers'].items():
+            if 'giveaways' in server_data:
+                for giveaway_id, giveaway in server_data['giveaways'].items():
+                    if giveaway.get('status') == 'active':
+                        bot.add_view(GiveawayJoinView(giveaway_id))
+                        bot.add_view(GiveawayAdminView(giveaway_id))
+                        logger.info(f'Vista registrada para sorteo {giveaway_id} en servidor {server_id}')
+
+    # Registrar vistas persistentes para verificación
+    if 'servers' in data:
+        for server_id, server_data in data['servers'].items():
+            verification_message_id = server_data.get('verification_message_id')
+            verification_channel_id = server_data.get('verification_channel')
+            if verification_message_id and verification_channel_id:
+                bot.add_view(VerificationView(str(verification_channel_id), str(verification_message_id)))
+                logger.info(f'Vista registrada para verificación en servidor {server_id}')
 
     # Iniciar tarea de auto-save optimizado
     bot.loop.create_task(_auto_save())
@@ -3067,10 +3088,11 @@ async def giveaway_create(interaction: discord.Interaction, prize: str, duration
         embed.add_field(name='👥 Participantes', value='**0**', inline=True)
         embed.set_footer(text=f'Organizado por {interaction.user.name}')
         embed.set_thumbnail(url=bot.user.display_avatar.url)
-        
-        # Enviar mensaje del sorteo
-        message = await channel.send(embed=embed, view=GiveawayJoinView('temp'))
-        
+
+        # Enviar mensaje del sorteo con vista temporal
+        temp_view = GiveawayJoinView('temp')
+        message = await channel.send(embed=embed, view=temp_view)
+
         # Guardar sorteo
         giveaway_id = str(message.id)
         data['servers'][server_id]['giveaways'][giveaway_id] = {
@@ -3085,13 +3107,18 @@ async def giveaway_create(interaction: discord.Interaction, prize: str, duration
             'status': 'active',
             'created_at': datetime.now().isoformat()
         }
-        
-        # Actualizar vista con el ID correcto
+
+        # Actualizar vista con el ID correcto y registrar
         updated_view = GiveawayJoinView(giveaway_id)
+        admin_view = GiveawayAdminView(giveaway_id)
         await message.edit(view=updated_view)
-        
+
+        # Registrar vistas persistentes
+        bot.add_view(updated_view)
+        bot.add_view(admin_view)
+
         save_data()
-        
+
         await interaction.followup.send(f'✅ Sorteo creado en {channel.mention}. Terminará <t:{int(end_time.timestamp())}:R>')
         logger.info(f'Sorteo creado: {prize} en servidor {interaction.guild.name} por {interaction.user.name}')
         
