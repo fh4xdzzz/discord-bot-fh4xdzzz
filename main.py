@@ -1149,28 +1149,12 @@ async def check_all_streamers():
                     if is_live and key not in stream_notifications:
                         await send_stream_notification(channel, streamer, guild)
                         stream_notifications[key] = datetime.now().timestamp()
+                        logger.info(f'Notificación enviada para {streamer["username"]} en servidor {guild.name}')
                     elif not is_live and key in stream_notifications:
                         del stream_notifications[key]
+                        logger.info(f'Streamer {streamer["username"]} offline en servidor {guild.name}')
                 except Exception as e:
-                    logger.error(f'Error checking streamer {streamer["username"]}: {e}')
-    
-    # Fallback a configuración global para compatibilidad
-    if data['config'].get('stream_channel') and data['config'].get('streamers'):
-        channel = bot.get_channel(data['config']['stream_channel'])
-        if channel:
-            guild = channel.guild
-            for streamer in data['config']['streamers']:
-                try:
-                    is_live = await check_streamer_live(streamer['platform'], streamer['username'])
-                    key = f"global-{streamer['platform']}-{streamer['username']}"
-                    
-                    if is_live and key not in stream_notifications:
-                        await send_stream_notification(channel, streamer, guild)
-                        stream_notifications[key] = datetime.now().timestamp()
-                    elif not is_live and key in stream_notifications:
-                        del stream_notifications[key]
-                except Exception as e:
-                    logger.error(f'Error checking streamer {streamer["username"]}: {e}')
+                    logger.error(f'Error checking streamer {streamer["username"]} en servidor {guild.name}: {e}')
 
 # Verificar si streamer está en live
 async def check_streamer_live(platform, username):
