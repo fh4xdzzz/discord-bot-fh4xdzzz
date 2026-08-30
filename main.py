@@ -983,8 +983,6 @@ async def update_ranking_periodically():
                 for server_id, server_config in data['servers'].items():
                     if server_config.get('ranking_channel') and server_config.get('ranking_message_id'):
                         await update_ranking(int(server_id))
-            # También actualizar el ranking global para compatibilidad
-            await update_ranking()
         except Exception as e:
             logger.error(f'Error en actualización periódica: {e}')
             await asyncio.sleep(60)  # Esperar antes de reintentar
