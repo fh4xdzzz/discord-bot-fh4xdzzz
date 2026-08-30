@@ -2431,7 +2431,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
-            embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
+            embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer, /config_stream_dashboard_channel, /create_stream_dashboard, /update_stream_dashboard', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
             embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
@@ -2454,7 +2454,7 @@ class HelpView(discord.ui.View):
         elif category == 'notificaciones':
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones', inline=False)
         elif category == 'streams':
-            embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
+            embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer\n/config_stream_dashboard_channel - Configura canal del dashboard\n/create_stream_dashboard - Crea dashboard de streams\n/update_stream_dashboard - Actualiza dashboard manualmente', inline=False)
         elif category == 'configuracion':
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel - Configura el canal de niveles\n/config_welcome_channel - Configura el canal de bienvenida\n/config_show - Muestra la configuración actual\n/config_log_channel - Configura el canal de logs', inline=False)
         elif category == 'filtro':
