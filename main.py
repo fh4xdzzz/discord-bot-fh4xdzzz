@@ -3908,29 +3908,51 @@ async def config_stream_channel(interaction: discord.Interaction, channel: disco
     await interaction.response.send_message(f'✅ Canal de notificaciones de streams configurado: {channel.mention}')
     print(f'[Config] Canal de streams configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
+class AddStreamerView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.select(
+        placeholder='Selecciona la plataforma...',
+        options=[
+            discord.SelectOption(label='YouTube (Channel ID)', value='youtube'),
+            discord.SelectOption(label='Twitch (Username)', value='twitch'),
+            discord.SelectOption(label='Kick (Username)', value='kick'),
+            discord.SelectOption(label='TikTok (Username)', value='tiktok'),
+        ]
+    )
+    async def select_platform(self, interaction: discord.Interaction, select: discord.ui.Select):
+        platform = select.values[0]
+        
+        class UsernameModal(discord.ui.Modal, title=f'Agregar Streamer ({platform.upper()})'):
+            username = discord.ui.TextInput(label='Username/Channel ID', placeholder='Ingresa el username o channel ID')
+            
+            async def on_submit(self, interaction: discord.Interaction):
+                username = self.username.value
+                
+                streamers = get_server_setting(interaction.guild.id, 'streamers', [])
+                
+                if not streamers:
+                    streamers = []
+                
+                for s in streamers:
+                    if s['platform'] == platform and s['username'] == username:
+                        await interaction.response.send_message('⚠️ Este streamer ya está siendo monitoreado.', ephemeral=True)
+                        return
+                
+                streamers.append({'platform': platform, 'username': username})
+                set_server_setting(interaction.guild.id, 'streamers', streamers)
+                save_data()
+                
+                await interaction.response.send_message(f'✅ Streamer agregado: {username} ({platform})')
+        
+        await interaction.response.send_modal(UsernameModal())
+
 @bot.tree.command(name='add_streamer', description='Agrega un streamer al monitoreo (Usa /config_streams)')
-@discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
 @discord.app_commands.checks.has_permissions(administrator=True)
-async def add_streamer(interaction: discord.Interaction, platform: str, username: str):
-    if platform not in ['tiktok', 'kick', 'twitch', 'youtube']:
-        await interaction.response.send_message('❌ Plataforma no válida. Usa: tiktok, kick, twitch, youtube', ephemeral=True)
-        return
-    
-    streamers = get_server_setting(interaction.guild.id, 'streamers', [])
-    
-    if not streamers:
-        streamers = []
-    
-    for s in streamers:
-        if s['platform'] == platform and s['username'] == username:
-            await interaction.response.send_message('⚠️ Este streamer ya está siendo monitoreado.', ephemeral=True)
-            return
-    
-    streamers.append({'platform': platform, 'username': username})
-    set_server_setting(interaction.guild.id, 'streamers', streamers)
-    save_data()
-    
-    await interaction.response.send_message(f'✅ Streamer agregado: {username} ({platform})')
+async def add_streamer(interaction: discord.Interaction):
+    view = AddStreamerView()
+    await interaction.response.send_message('Selecciona la plataforma del streamer:', view=view, ephemeral=True)
 
 @bot.tree.command(name='remove_streamer', description='Elimina un streamer del monitoreo (Usa /config_streams)')
 @discord.app_commands.describe(username='Nombre de usuario del streamer')
