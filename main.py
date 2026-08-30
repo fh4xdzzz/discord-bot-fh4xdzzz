@@ -1050,7 +1050,13 @@ def create_ranking_embed(guild_id):
     if not sorted_users:
         embed.add_field(name='Sin usuarios', value='Aún no hay usuarios en el ranking', inline=False)
     else:
-        for i, (user_id, user_data) in enumerate(sorted_users):
+        # Dividir en dos grupos de 5
+        left_users = sorted_users[:5]
+        right_users = sorted_users[5:10]
+
+        # Crear texto para el lado izquierdo
+        left_text = ''
+        for i, (user_id, user_data) in enumerate(left_users):
             user = bot.get_user(int(user_id))
             username = user.name if user else 'Usuario desconocido'
             level = user_data['level']
@@ -1060,17 +1066,34 @@ def create_ranking_embed(guild_id):
             xp_needed = (level * 100) - xp
             xp_percentage = min(100, int((xp / (level * 100)) * 100)) if level > 0 else 100
             
-            # Crear barra de progreso con emojis
+            # Crear barra de progreso simplificada
             progress_bars = '█' * (xp_percentage // 10) + '░' * (10 - (xp_percentage // 10))
             
             medal = '🥇' if i == 0 else '🥈' if i == 1 else '🥉' if i == 2 else f'#{i + 1}'
             
-            user_info = f'{medal} **{username}**\n'
-            user_info += f'📊 Nivel {level} | {xp} XP\n'
-            user_info += f'📈 Progreso: {progress_bars} {xp_percentage}%\n'
-            user_info += f'🎯 XP para siguiente nivel: {xp_needed}'
+            left_text += f'{medal} **{username}**\n📊 Nv.{level} | {xp} XP\n{progress_bars} {xp_percentage}%\n\n'
+
+        # Crear texto para el lado derecho
+        right_text = ''
+        for i, (user_id, user_data) in enumerate(right_users):
+            user = bot.get_user(int(user_id))
+            username = user.name if user else 'Usuario desconocido'
+            level = user_data['level']
+            xp = user_data['xp']
             
-            embed.add_field(name=f'#{i + 1} {username}', value=user_info, inline=False)
+            # Calcular XP para el siguiente nivel
+            xp_needed = (level * 100) - xp
+            xp_percentage = min(100, int((xp / (level * 100)) * 100)) if level > 0 else 100
+            
+            # Crear barra de progreso simplificada
+            progress_bars = '█' * (xp_percentage // 10) + '░' * (10 - (xp_percentage // 10))
+            
+            medal = f'#{i + 6}'
+            
+            right_text += f'{medal} **{username}**\n📊 Nv.{level} | {xp} XP\n{progress_bars} {xp_percentage}%\n\n'
+
+        embed.add_field(name='🥇 Top 5', value=left_text, inline=True)
+        embed.add_field(name='🥈 Pos 6-10', value=right_text, inline=True)
 
     embed.set_footer(text=f'Última actualización: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} | Sistema de Niveles')
     embed.set_image(url=bot.user.display_avatar.url)
