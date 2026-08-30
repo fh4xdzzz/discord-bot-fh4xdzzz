@@ -3,6 +3,7 @@
 
 # Archivos de datos sensibles
 bot_data.json
+bot_data_backup.json
 
 # Python
 __pycache__/

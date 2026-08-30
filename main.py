@@ -30,6 +30,7 @@ load_dotenv()
 # Configuración
 TOKEN = os.getenv('DISCORD_TOKEN')
 DATA_FILE = 'bot_data.json'
+BACKUP_FILE = 'bot_data_backup.json'
 
 # Intents
 intents = discord.Intents.default()
@@ -51,14 +52,51 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                loaded_data = json.load(f)
+                # Verificar que los datos no estén vacíos o corruptos
+                if not loaded_data or not isinstance(loaded_data, dict):
+                    logger.warning('Datos corruptos o vacíos. Intentando restaurar desde backup...')
+                    return load_backup_data()
+                # Crear backup después de cargar exitosamente
+                create_backup()
+                return loaded_data
         except json.JSONDecodeError as e:
-            logger.error(f'Error al decodificar JSON: {e}. Creando datos por defecto.')
-            return create_default_data()
+            logger.error(f'Error al decodificar JSON: {e}. Intentando restaurar desde backup...')
+            return load_backup_data()
         except Exception as e:
-            logger.error(f'Error al cargar datos: {e}. Creando datos por defecto.')
-            return create_default_data()
+            logger.error(f'Error al cargar datos: {e}. Intentando restaurar desde backup...')
+            return load_backup_data()
+    else:
+        logger.warning('Archivo de datos no encontrado. Creando datos por defecto.')
+        return create_default_data()
+
+def load_backup_data():
+    """Intenta cargar datos desde el archivo de backup"""
+    if os.path.exists(BACKUP_FILE):
+        try:
+            with open(BACKUP_FILE, 'r', encoding='utf-8') as f:
+                backup_data = json.load(f)
+                if backup_data and isinstance(backup_data, dict):
+                    logger.info('Backup restaurado exitosamente')
+                    # Restaurar el archivo principal desde el backup
+                    save_data_immediate()
+                    return backup_data
+        except Exception as e:
+            logger.error(f'Error al cargar backup: {e}')
+    logger.error('No se pudo restaurar desde backup. Creando datos por defecto.')
     return create_default_data()
+
+def create_backup():
+    """Crea una copia de seguridad de los datos actuales"""
+    try:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                backup_data = json.load(f)
+            with open(BACKUP_FILE, 'w', encoding='utf-8') as f:
+                json.dump(backup_data, f, indent=4, ensure_ascii=False)
+            logger.info('Backup creado exitosamente')
+    except Exception as e:
+        logger.error(f'Error al crear backup: {e}')
 
 def create_default_data():
     return {
