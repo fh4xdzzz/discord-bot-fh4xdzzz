@@ -977,7 +977,7 @@ async def on_ready():
 async def update_ranking_periodically():
     while True:
         try:
-            await asyncio.sleep(300)
+            await asyncio.sleep(60)
             # Actualizar ranking para cada servidor que tiene configuración
             if 'servers' in data:
                 for server_id, server_config in data['servers'].items():
@@ -987,7 +987,7 @@ async def update_ranking_periodically():
             await update_ranking()
         except Exception as e:
             logger.error(f'Error en actualización periódica: {e}')
-            await asyncio.sleep(300)  # Esperar antes de reintentar
+            await asyncio.sleep(60)  # Esperar antes de reintentar
 
 # Monitoreo periódico de streams
 async def check_streams_periodically():
@@ -1009,19 +1009,23 @@ async def update_ranking(guild_id=None):
         # Fallback a global (para compatibilidad)
         ranking_channel_id = data['config'].get('ranking_channel')
         ranking_message_id = data['config'].get('ranking_message_id')
-    
+
+    logger.info(f'Actualizando ranking - guild_id: {guild_id}, channel_id: {ranking_channel_id}, message_id: {ranking_message_id}')
+
     if not ranking_channel_id or not ranking_message_id:
+        logger.warning('No hay configuración de ranking actualizada')
         return
-    
+
     try:
         channel = bot.get_channel(ranking_channel_id)
         if not channel:
+            logger.warning(f'Canal {ranking_channel_id} no encontrado')
             return
-        
+
         message = await channel.fetch_message(ranking_message_id)
         embed = create_ranking_embed(channel.guild.id)
         await message.edit(embed=embed)
-        logger.info('Ranking actualizado')
+        logger.info(f'Ranking actualizado para servidor {channel.guild.name}')
     except Exception as e:
         logger.error(f'Error al actualizar ranking: {e}')
 
@@ -1044,7 +1048,7 @@ def create_ranking_embed(guild_id):
     )
 
     embed.set_thumbnail(url=bot.user.display_avatar.url)
-    embed.add_field(name='🔄 Actualización', value='Cada 5 minutos', inline=True)
+    embed.add_field(name='🔄 Actualización', value='Cada 1 minuto', inline=True)
     embed.add_field(name='👥 Total Usuarios', value=str(len(users)), inline=True)
 
     if not sorted_users:
@@ -3777,7 +3781,7 @@ async def create_ranking(interaction: discord.Interaction):
 
 @bot.tree.command(name='update_ranking', description='Actualiza manualmente el ranking')
 async def update_ranking_command(interaction: discord.Interaction):
-    await update_ranking()
+    await update_ranking(interaction.guild.id)
     await interaction.response.send_message('✅ Ranking actualizado manualmente')
 
 @bot.tree.command(name='config_stream_channel', description='Configura el canal para notificaciones de streams (Usa /config_streams)')
