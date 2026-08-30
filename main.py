@@ -11,6 +11,7 @@ import io
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
+from PIL import Image, ImageDraw, ImageFont
 
 # Configurar logging
 logging.basicConfig(
@@ -972,6 +973,9 @@ async def on_ready():
     # Iniciar monitoreo de streams
     bot.loop.create_task(check_streams_periodically())
 
+    # Iniciar actualización de dashboard de streams
+    bot.loop.create_task(update_stream_dashboard_periodically())
+
     # Iniciar actualización de temporizadores de sorteos
 # Actualización periódica del ranking
 async def update_ranking_periodically():
@@ -1177,6 +1181,119 @@ async def send_stream_notification(channel, streamer, guild):
         message=f'**{streamer["username"]}** está en live en {streamer["platform"].upper()}! [Ir al stream]({url})',
         color=0xFF0000
     )
+
+# Crear imagen del dashboard de streams
+async def create_stream_dashboard_image(guild_id):
+    streamers = get_server_setting(guild_id, 'streamers', [])
+    
+    if not streamers:
+        return None
+    
+    # Configuración de la imagen
+    width = 800
+    height = 200 + (len(streamers) * 80)
+    
+    # Crear imagen de fondo oscuro
+    img = Image.new('RGB', (width, height), color=(20, 20, 30))
+    draw = ImageDraw.Draw(img)
+    
+    # Intentar cargar fuente, usar fallback si no está disponible
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 36)
+        text_font = ImageFont.truetype("arial.ttf", 24)
+        small_font = ImageFont.truetype("arial.ttf", 18)
+    except:
+        title_font = ImageFont.load_default()
+        text_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+    
+    # Título
+    draw.text((20, 20), "📺 DASHBOARD DE STREAMS", fill=(255, 255, 255), font=title_font)
+    draw.line([(20, 70), (780, 70)], fill=(100, 100, 100), width=2)
+    
+    # Timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    draw.text((20, 85), f"Actualizado: {timestamp}", fill=(150, 150, 150), font=small_font)
+    
+    # Lista de streamers
+    y_position = 120
+    for i, streamer in enumerate(streamers):
+        # Rectángulo de fondo para cada streamer
+        draw.rectangle([(20, y_position), (780, y_position + 70)], fill=(30, 30, 40), outline=(50, 50, 60), width=2)
+        
+        # Nombre del streamer
+        draw.text((35, y_position + 10), f"@{streamer['username']}", fill=(255, 255, 255), font=text_font)
+        
+        # Plataforma
+        platform_colors = {
+            'twitch': (9146, 165, 237),
+            'kick': (53, 232, 69),
+            'youtube': (255, 0, 0),
+            'tiktok': (0, 0, 0)
+        }
+        platform_color = platform_colors.get(streamer['platform'], (150, 150, 150))
+        draw.text((35, y_position + 45), streamer['platform'].upper(), fill=platform_color, font=small_font)
+        
+        # Estado (verificar si está en vivo)
+        is_live = await check_streamer_live(streamer['platform'], streamer['username'])
+        if is_live:
+            status_text = "🔴 EN VIVO"
+            status_color = (255, 0, 0)
+        else:
+            status_text = "⚫ OFFLINE"
+            status_color = (100, 100, 100)
+        
+        draw.text((500, y_position + 25), status_text, fill=status_color, font=text_font)
+        
+        y_position += 80
+    
+    # Guardar imagen en memoria
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    
+    return img_bytes
+
+# Actualizar dashboard de streams
+async def update_stream_dashboard(guild_id=None):
+    if guild_id:
+        dashboard_channel_id = get_server_setting(guild_id, 'stream_dashboard_channel')
+        dashboard_message_id = get_server_setting(guild_id, 'stream_dashboard_message_id')
+    else:
+        dashboard_channel_id = data['config'].get('stream_dashboard_channel')
+        dashboard_message_id = data['config'].get('stream_dashboard_message_id')
+    
+    if not dashboard_channel_id or not dashboard_message_id:
+        return
+    
+    try:
+        channel = bot.get_channel(dashboard_channel_id)
+        if not channel:
+            return
+        
+        message = await channel.fetch_message(dashboard_message_id)
+        img_bytes = await create_stream_dashboard_image(channel.guild.id)
+        
+        if img_bytes:
+            file = discord.File(img_bytes, filename='stream_dashboard.png')
+            await message.edit(content='', attachments=[file])
+            logger.info(f'Dashboard de streams actualizado para servidor {channel.guild.name}')
+    except Exception as e:
+        logger.error(f'Error al actualizar dashboard de streams: {e}')
+
+# Actualización periódica del dashboard de streams
+async def update_stream_dashboard_periodically():
+    while True:
+        try:
+            await asyncio.sleep(120)
+            # Actualizar dashboard para cada servidor que tiene configuración
+            if 'servers' in data:
+                for server_id, server_config in data['servers'].items():
+                    if server_config.get('stream_dashboard_channel') and server_config.get('stream_dashboard_message_id'):
+                        await update_stream_dashboard(int(server_id))
+        except Exception as e:
+            logger.error(f'Error en actualización periódica de dashboard: {e}')
+            await asyncio.sleep(120)
 
 # Evento message_create
 @bot.event
@@ -3852,6 +3969,50 @@ async def list_streamers(interaction: discord.Interaction):
     )
     
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name='config_stream_dashboard_channel', description='Configura el canal para el dashboard de streams')
+@discord.app_commands.describe(channel='Canal para el dashboard de streams')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_stream_dashboard_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    set_server_setting(interaction.guild.id, 'stream_dashboard_channel', channel.id)
+    save_data()
+    await interaction.response.send_message(f'✅ Canal de dashboard de streams configurado: {channel.mention}')
+    print(f'[Config] Canal de dashboard de streams configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
+
+@bot.tree.command(name='create_stream_dashboard', description='Crea el mensaje del dashboard de streams en el canal configurado')
+async def create_stream_dashboard(interaction: discord.Interaction):
+    dashboard_channel_id = get_server_setting(interaction.guild.id, 'stream_dashboard_channel')
+    
+    if not dashboard_channel_id:
+        await interaction.response.send_message('❌ Primero configura el canal del dashboard con /config_stream_dashboard_channel', ephemeral=True)
+        return
+    
+    channel = bot.get_channel(dashboard_channel_id)
+    if not channel:
+        await interaction.response.send_message('❌ Canal de dashboard no encontrado', ephemeral=True)
+        return
+    
+    try:
+        img_bytes = await create_stream_dashboard_image(interaction.guild.id)
+        
+        if not img_bytes:
+            await interaction.response.send_message('❌ No hay streamers configurados. Agrega streamers con /add_streamer', ephemeral=True)
+            return
+        
+        file = discord.File(img_bytes, filename='stream_dashboard.png')
+        message = await channel.send(file=file)
+        
+        set_server_setting(interaction.guild.id, 'stream_dashboard_message_id', message.id)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Dashboard de streams creado en {channel.mention}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al crear dashboard: {e}', ephemeral=True)
+
+@bot.tree.command(name='update_stream_dashboard', description='Actualiza manualmente el dashboard de streams')
+async def update_stream_dashboard_command(interaction: discord.Interaction):
+    await update_stream_dashboard(interaction.guild.id)
+    await interaction.response.send_message('✅ Dashboard de streams actualizado manualmente')
 
 @bot.tree.command(name='check_stream', description='Verifica manualmente si un streamer está en live')
 @discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
