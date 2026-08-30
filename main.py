@@ -4036,26 +4036,44 @@ async def update_stream_dashboard_command(interaction: discord.Interaction):
     await update_stream_dashboard(interaction.guild.id)
     await interaction.response.send_message('✅ Dashboard de streams actualizado manualmente')
 
+class CheckStreamView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.select(
+        placeholder='Selecciona la plataforma...',
+        options=[
+            discord.SelectOption(label='YouTube (Channel ID)', value='youtube'),
+            discord.SelectOption(label='Twitch (Username)', value='twitch'),
+            discord.SelectOption(label='Kick (Username)', value='kick'),
+            discord.SelectOption(label='TikTok (Username)', value='tiktok'),
+        ]
+    )
+    async def select_platform(self, interaction: discord.Interaction, select: discord.ui.Select):
+        platform = select.values[0]
+        
+        class UsernameModal(discord.ui.Modal, title=f'Verificar Stream ({platform.upper()})'):
+            username = discord.ui.TextInput(label='Username/Channel ID', placeholder='Ingresa el username o channel ID')
+            
+            async def on_submit(self, interaction: discord.Interaction):
+                username = self.username.value
+                
+                try:
+                    is_live = await check_streamer_live(platform, username)
+                    
+                    if is_live:
+                        await interaction.response.send_message(f'✅ {username} está en live en {platform}!')
+                    else:
+                        await interaction.response.send_message(f'❌ {username} no está en live en {platform}.')
+                except Exception as e:
+                    await interaction.response.send_message(f'❌ Error al verificar: {e}', ephemeral=True)
+        
+        await interaction.response.send_modal(UsernameModal())
+
 @bot.tree.command(name='check_stream', description='Verifica manualmente si un streamer está en live')
-@discord.app_commands.describe(platform='Plataforma del streamer', username='Nombre de usuario del streamer')
-async def check_stream(interaction: discord.Interaction, platform: str, username: str):
-    try:
-        # Validar inputs
-        valid_platforms = ['twitch', 'kick', 'youtube', 'tiktok']
-        if platform.lower() not in valid_platforms:
-            await interaction.response.send_message(f'❌ Plataforma no válida. Opciones: {", ".join(valid_platforms)}', ephemeral=True)
-            return
-        
-        username = validate_username(username)
-        
-        is_live = await check_streamer_live(platform, username)
-        
-        if is_live:
-            await interaction.response.send_message(f'✅ {username} está en live en {platform}!')
-        else:
-            await interaction.response.send_message(f'❌ {username} no está en live en {platform}.')
-    except ValueError as e:
-        await interaction.response.send_message(f'❌ Error de validación: {e}', ephemeral=True)
+async def check_stream(interaction: discord.Interaction):
+    view = CheckStreamView()
+    await interaction.response.send_message('Selecciona la plataforma del streamer:', view=view, ephemeral=True)
     except Exception as e:
         logger.error(f'Error al verificar stream: {e}')
         await interaction.response.send_message(f'❌ Error al verificar stream: {e}', ephemeral=True)
