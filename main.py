@@ -494,37 +494,40 @@ class GiveawayAdminView(discord.ui.View):
         self.giveaway_end_button.callback = self.end_button
         self.add_item(self.giveaway_end_button)
 
+        self.giveaway_reroll_button = discord.ui.Button(label='🎲 Reroll', style=discord.ButtonStyle.secondary, custom_id=f'giveaway_reroll_{giveaway_id}')
+        self.giveaway_reroll_button.callback = self.reroll_button
+        self.add_item(self.giveaway_reroll_button)
+
     async def end_button(self, interaction: discord.Interaction):
         server_id = str(interaction.guild.id)
-        
+
         # Verificar permisos
         admin_role_id = get_server_setting(interaction.guild.id, 'giveaway_admin_role')
         has_permission = interaction.user.guild_permissions.administrator
-        
+
         if admin_role_id:
             admin_role = interaction.guild.get_role(admin_role_id)
             if admin_role and admin_role in interaction.user.roles:
                 has_permission = True
-        
+
         if not has_permission:
             await interaction.response.send_message('❌ No tienes permisos para administrar sorteos', ephemeral=True)
             return
-        
+
         # Finalizar sorteo
         if self.giveaway_id in data['servers'][server_id]['giveaways']:
             giveaway = data['servers'][server_id]['giveaways'][self.giveaway_id]
             giveaway['status'] = 'ended'
             data['servers'][server_id]['giveaways'][self.giveaway_id] = giveaway
             save_data()
-            
+
             # Ejecutar finalización
             bot.loop.create_task(end_giveaway(self.giveaway_id, server_id))
             await interaction.response.send_message('✅ Sorteo finalizado manualmente', ephemeral=True)
         else:
             await interaction.response.send_message('❌ Sorteo no encontrado', ephemeral=True)
-    
-    @discord.ui.button(label='🎲 Reroll', style=discord.ButtonStyle.secondary, custom_id='giveaway_reroll')
-    async def reroll_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+
+    async def reroll_button(self, interaction: discord.Interaction):
         server_id = str(interaction.guild.id)
         
         # Verificar permisos
