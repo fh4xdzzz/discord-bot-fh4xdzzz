@@ -1342,15 +1342,16 @@ async def update_stream_dashboard(guild_id=None):
 async def update_stream_dashboard_periodically():
     while True:
         try:
-            await asyncio.sleep(120)
+            await asyncio.sleep(30)  # Reducido a 30 segundos para actualizaciones más rápidas
             # Actualizar dashboard para cada servidor que tiene configuración
             if 'servers' in data:
                 for server_id, server_config in data['servers'].items():
                     if server_config.get('stream_dashboard_channel') and server_config.get('stream_dashboard_message_id'):
+                        logger.info(f'Actualizando dashboard para servidor {server_id}')
                         await update_stream_dashboard(int(server_id))
         except Exception as e:
             logger.error(f'Error en actualización periódica de dashboard: {e}')
-            await asyncio.sleep(120)
+            await asyncio.sleep(30)
 
 # Evento message_create
 @bot.event
