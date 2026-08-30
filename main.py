@@ -1176,7 +1176,12 @@ async def check_streamer_live(platform, username):
             response = requests.get(f'https://kick.com/api/v2/channels/{username}')
             return response.json().get('livestream', {}).get('is_live', False)
         elif platform == 'tiktok':
-            return False
+            # Verificar estado de TikTok
+            response = requests.get(f'https://www.tiktok.com/@{username}/live', headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            })
+            # TikTok puede estar en vivo si hay ciertos indicadores en la página
+            return 'live' in response.text.lower() or 'is_live' in response.text.lower() or 'livestream' in response.text.lower()
         elif platform == 'twitch':
             response = requests.get(f'https://twitch.tv/{username}')
             return 'isLiveBroadcasting' in response.text or 'live-channel-card' in response.text
