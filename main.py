@@ -1036,11 +1036,11 @@ async def update_ranking_periodically():
 async def check_streams_periodically():
     while True:
         try:
-            await asyncio.sleep(120)
+            await asyncio.sleep(30)  # Revisar cada 30 segundos para notificaciones más rápidas
             await check_all_streamers()
         except Exception as e:
             logger.error(f'Error en monitoreo periódico: {e}')
-            await asyncio.sleep(120)  # Esperar antes de reintentar
+            await asyncio.sleep(30)  # Esperar antes de reintentar
 
 # Actualizar ranking
 async def update_ranking(guild_id=None):
