@@ -31,6 +31,9 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 DATA_FILE = 'bot_data.json'
 BACKUP_FILE = 'bot_data_backup.json'
+TWITCH_CLIENT_ID = os.getenv('TWITCH_CLIENT_ID')
+TWITCH_TOKEN = os.getenv('TWITCH_TOKEN')
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 
 # Intents
 intents = discord.Intents.default()
@@ -1183,13 +1186,40 @@ async def check_streamer_live(platform, username):
             # TikTok puede estar en vivo si hay ciertos indicadores en la página
             return 'live' in response.text.lower() or 'is_live' in response.text.lower() or 'livestream' in response.text.lower()
         elif platform == 'twitch':
-            response = requests.get(f'https://twitch.tv/{username}')
-            return 'isLiveBroadcasting' in response.text or 'live-channel-card' in response.text
+            if not TWITCH_CLIENT_ID or not TWITCH_TOKEN:
+                logger.warning('Twitch API credentials not configured, falling back to HTML check')
+                response = requests.get(f'https://twitch.tv/{username}')
+                return 'isLiveBroadcasting' in response.text or 'live-channel-card' in response.text
+            
+            headers = {
+                'Client-ID': TWITCH_CLIENT_ID,
+                'Authorization': f'Bearer {TWITCH_TOKEN}'
+            }
+            response = requests.get(f'https://api.twitch.tv/helix/streams?user_login={username}', headers=headers)
+            data = response.json()
+            return len(data.get('data', [])) > 0
         elif platform == 'youtube':
-            response = requests.get(f'https://www.youtube.com/@{username}/live')
-            return 'isLive' in response.text or 'live-stream' in response.text
+            if not YOUTUBE_API_KEY:
+                logger.warning('YouTube API key not configured, falling back to HTML check')
+                response = requests.get(f'https://www.youtube.com/@{username}/live')
+                return 'isLive' in response.text or 'live-stream' in response.text
+            
+            # Primero obtener el channel ID desde el username
+            response = requests.get(f'https://www.googleapis.com/youtube/v3/channels?forHandle={username}&part=id&key={YOUTUBE_API_KEY}')
+            channel_data = response.json()
+            
+            if 'items' not in channel_data or not channel_data['items']:
+                return False
+            
+            channel_id = channel_data['items'][0]['id']
+            
+            # Verificar si hay live activo
+            response = requests.get(f'https://www.googleapis.com/youtube/v3/search?channelId={channel_id}&part=snippet&type=video&eventType=live&key={YOUTUBE_API_KEY}')
+            search_data = response.json()
+            return len(search_data.get('items', [])) > 0
         return False
-    except:
+    except Exception as e:
+        logger.error(f'Error checking streamer {username} on {platform}: {e}')
         return False
 
 # Enviar notificación de stream
