@@ -916,12 +916,12 @@ async def on_ready():
     logger.info(f'ID: {bot.user.id}')
     logger.info(f'Servidores: {len(bot.guilds)}')
 
-    # Registrar vistas persistentes para sorteos activos
+    # Registrar vistas persistentes para sorteos activos y finalizados
     if 'servers' in data:
         for server_id, server_data in data['servers'].items():
             if 'giveaways' in server_data:
                 for giveaway_id, giveaway in server_data['giveaways'].items():
-                    if giveaway.get('status') == 'active':
+                    if giveaway.get('status') in ['active', 'ended']:
                         bot.add_view(GiveawayJoinView(giveaway_id))
                         bot.add_view(GiveawayAdminView(giveaway_id))
                         logger.info(f'Vista registrada para sorteo {giveaway_id} en servidor {server_id}')
@@ -4090,8 +4090,14 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         # Actualizar la vista con el ID del mensaje
         view.message_id = str(message.id)
 
+        # Registrar vista persistente
+        updated_view = VerificationView(str(channel.id), str(message.id))
+        await message.edit(view=updated_view)
+        bot.add_view(updated_view)
+
         # Guardar el message_id específico del servidor
         data['servers'][server_id]['verification_message_id'] = message.id
+        data['servers'][server_id]['verification_channel'] = channel.id
         save_data()
 
         await interaction.response.send_message(f'✅ Mensaje de verificación creado en {channel.mention}')
