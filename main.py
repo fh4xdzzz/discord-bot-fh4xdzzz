@@ -243,7 +243,9 @@ def get_server_config(guild_id):
         data['servers'] = {}
     if server_id not in data['servers']:
         data['servers'][server_id] = {}
-    return data['servers'][server_id]
+    if 'config' not in data['servers'][server_id]:
+        data['servers'][server_id]['config'] = {}
+    return data['servers'][server_id]['config']
 
 def get_server_setting(guild_id, key, default=None):
     """Obtiene un valor de configuración específico del servidor"""
@@ -330,26 +332,6 @@ def validate_discord_id(id_value: str, field_name: str) -> int:
         raise ValueError(f"{field_name} debe ser un número entero válido")
 
 # ==================== SISTEMA DE SORTEOS ====================
-
-def get_server_setting(guild_id: int, setting_key: str, default=None):
-    """Obtiene una configuración específica del servidor"""
-    server_id = str(guild_id)
-    if 'servers' in data and server_id in data['servers']:
-        if 'config' in data['servers'][server_id]:
-            return data['servers'][server_id]['config'].get(setting_key, default)
-    return default
-
-def set_server_setting(guild_id: int, setting_key: str, value):
-    """Establece una configuración específica del servidor"""
-    server_id = str(guild_id)
-    if 'servers' not in data:
-        data['servers'] = {}
-    if server_id not in data['servers']:
-        data['servers'][server_id] = {}
-    if 'config' not in data['servers'][server_id]:
-        data['servers'][server_id]['config'] = {}
-    data['servers'][server_id]['config'][setting_key] = value
-    save_data()
 
 # Vista para el botón de participación en sorteos
 class GiveawayJoinView(discord.ui.View):
@@ -923,6 +905,11 @@ async def on_ready():
     logger.info(f'Bot conectado: {bot.user.name}')
     logger.info(f'ID: {bot.user.id}')
     logger.info(f'Servidores: {len(bot.guilds)}')
+
+    # Registrar vistas persistentes
+    bot.add_view(GiveawayJoinView("dummy"))
+    bot.add_view(VerificationView("0", "0"))
+    logger.info('Vistas persistentes registradas')
 
     # Iniciar tarea de auto-save optimizado
     bot.loop.create_task(_auto_save())
