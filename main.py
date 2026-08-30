@@ -2321,7 +2321,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
             embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
         elif category == 'niveles':
-            embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el ranking de usuarios\n/server_stats - Muestra estadísticas del servidor', inline=False)
+            embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el top 5 usuarios por nivel\n/server_stats - Muestra estadísticas del servidor\n/config_level_channel - Configura canal de notificaciones de nivel\n/add_level_role - Agrega rol por nivel\n/remove_level_role - Elimina rol por nivel\n/list_level_roles - Lista roles por nivel', inline=False)
         elif category == 'ranking':
             embed.add_field(name='🏆 Ranking', value='/config_ranking_channel - Configura el canal del ranking\n/create_ranking - Crea el mensaje de ranking\n/update_ranking - Actualiza el ranking manualmente\n/config_level_channel - Configura canal de notificaciones de nivel', inline=False)
         elif category == 'autoroles':
