@@ -4112,9 +4112,6 @@ class CheckStreamView(discord.ui.View):
 async def check_stream(interaction: discord.Interaction):
     view = CheckStreamView()
     await interaction.response.send_message('Selecciona la plataforma del streamer:', view=view, ephemeral=True)
-    except Exception as e:
-        logger.error(f'Error al verificar stream: {e}')
-        await interaction.response.send_message(f'❌ Error al verificar stream: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_add_banned_word', description='Agrega una palabra prohibida')
 @discord.app_commands.describe(word='Palabra a prohibir')
