@@ -4030,10 +4030,11 @@ async def update_ranking_command(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_stats_channel(interaction: discord.Interaction):
     try:
-        # Crear canal de texto para mostrar miembros
+        # Crear canal de texto para mostrar miembros al principio
         member_count = interaction.guild.member_count
         stats_channel = await interaction.guild.create_text_channel(
             f'👥-miembros-{member_count}',
+            position=0,  # Posición más alta (arriba de todo)
             overwrites={
                 interaction.guild.default_role: discord.PermissionOverwrite(
                     send_messages=False,  # Nadie puede enviar mensajes
@@ -4057,8 +4058,8 @@ async def create_stats_channel(interaction: discord.Interaction):
         set_server_setting(interaction.guild.id, 'stats_message_id', (await stats_channel.fetch_message(limit=1))[0].id)
         save_data()
         
-        await interaction.response.send_message(f'✅ Canal de estadísticas creado: {stats_channel.mention}')
-        logger.info(f'Canal de estadísticas creado en servidor {interaction.guild.name}')
+        await interaction.response.send_message(f'✅ Canal de estadísticas creado al principio: {stats_channel.mention}')
+        logger.info(f'Canal de estadísticas creado al principio en servidor {interaction.guild.name}')
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al crear canal: {e}', ephemeral=True)
         logger.error(f'Error al crear canal de estadísticas: {e}')
