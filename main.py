@@ -11,6 +11,7 @@ import io
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
+from PIL import Image, ImageDraw, ImageFont
 
 # Configurar logging
 logging.basicConfig(
@@ -1235,6 +1236,45 @@ async def send_stream_notification(channel, streamer, guild):
         color=0xFF0000
     )
 
+# Crear imagen de subida de nivel
+def create_level_up_image(user, new_level, guild):
+    # Configuración de la imagen
+    width = 600
+    height = 300
+    
+    # Crear imagen de fondo con gradiente
+    img = Image.new('RGB', (width, height), color=(30, 30, 40))
+    draw = ImageDraw.Draw(img)
+    
+    # Intentar cargar fuente, usar fallback si no está disponible
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 48)
+        text_font = ImageFont.truetype("arial.ttf", 32)
+        small_font = ImageFont.truetype("arial.ttf", 24)
+    except:
+        title_font = ImageFont.load_default()
+        text_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+    
+    # Título
+    draw.text((300, 50), "🎉 ¡LEVEL UP!", fill=(255, 215, 0), font=title_font, anchor="mm")
+    
+    # Usuario
+    draw.text((300, 120), f"{user.name}", fill=(255, 255, 255), font=text_font, anchor="mm")
+    
+    # Nivel
+    draw.text((300, 180), f"Nivel {new_level}", fill=(100, 255, 100), font=text_font, anchor="mm")
+    
+    # Servidor
+    draw.text((300, 240), f"{guild.name}", fill=(150, 150, 150), font=small_font, anchor="mm")
+    
+    # Guardar imagen en memoria
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes.seek(0)
+    
+    return img_bytes
+
 # Evento message_create
 @bot.event
 async def on_message(message):
@@ -1298,18 +1338,25 @@ async def on_message(message):
                 except:
                     pass
 
-            embed = discord.Embed(
-                title='¡SUBIDA DE NIVEL!',
-                description=f'¡Felicidades {message.author.mention} has subido al nivel **{new_level}**!',
-                color=0xFFD700
-            )
-
-            embed.add_field(name='Nuevo Nivel', value=f'**{new_level}**', inline=True)
-            embed.add_field(name='XP Total', value=str(new_level * 100 - 100), inline=True)
-            embed.set_thumbnail(url=message.author.display_avatar.url)
-            embed.set_footer(text=f'Usuario: {message.author.name} | ID: {message.author.id}')
-
-            await level_channel.send(embed=embed)
+            # Generar y enviar imagen de subida de nivel
+            try:
+                img_bytes = create_level_up_image(message.author, new_level, message.guild)
+                file = discord.File(img_bytes, filename='level_up.png')
+                await level_channel.send(content=f'🎉 ¡{message.author.mention} ha subido al nivel {new_level}!', file=file)
+                logger.info(f'Imagen de nivel enviada para {message.author.name} en servidor {message.guild.name}')
+            except Exception as e:
+                logger.error(f'Error al generar/enviar imagen de nivel: {e}')
+                # Fallback a embed si falla la imagen
+                embed = discord.Embed(
+                    title='¡SUBIDA DE NIVEL!',
+                    description=f'¡Felicidades {message.author.mention} has subido al nivel **{new_level}**!',
+                    color=0xFFD700
+                )
+                embed.add_field(name='Nuevo Nivel', value=f'**{new_level}**', inline=True)
+                embed.add_field(name='XP Total', value=str(new_level * 100 - 100), inline=True)
+                embed.set_thumbnail(url=message.author.display_avatar.url)
+                embed.set_footer(text=f'Usuario: {message.author.name} | ID: {message.author.id}')
+                await level_channel.send(embed=embed)
 
             # Log de subida de nivel
             await send_log(
@@ -3507,7 +3554,15 @@ async def add_xp(interaction: discord.Interaction, user: discord.Member, amount:
     save_data()
     
     if level_up:
-        await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. ¡Subió al nivel {new_level}!')
+        # Generar y enviar imagen de subida de nivel
+        try:
+            img_bytes = create_level_up_image(user, new_level, interaction.guild)
+            file = discord.File(img_bytes, filename='level_up.png')
+            await interaction.response.send_message(f'🎉 ¡{user.mention} ha subido al nivel {new_level}!', file=file)
+            logger.info(f'Imagen de nivel enviada para {user.name} en servidor {interaction.guild.name}')
+        except Exception as e:
+            logger.error(f'Error al generar/enviar imagen de nivel: {e}')
+            await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. ¡Subió al nivel {new_level}!')
     else:
         await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. Nivel actual: {new_level}')
 
