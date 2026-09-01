@@ -2326,7 +2326,6 @@ async def assign_auto_roles(member):
 
 # Comandos slash
 @bot.tree.command(name='ping', description='Comprueba la latencia del bot')
-@discord.app_commands.checks.cooldown(1, 10, key=lambda i: i.user.id)
 async def ping(interaction: discord.Interaction):
     try:
         await interaction.response.send_message(f'🏓 Pong! {round(bot.latency * 1000)}ms')
@@ -3513,7 +3512,6 @@ async def add_xp(interaction: discord.Interaction, user: discord.Member, amount:
         await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. Nivel actual: {new_level}')
 
 @bot.tree.command(name='level', description='Muestra tu nivel y XP actual')
-@discord.app_commands.checks.cooldown(1, 30, key=lambda i: i.user.id)
 async def level(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
@@ -3548,7 +3546,6 @@ async def level(interaction: discord.Interaction):
         await interaction.response.send_message('Aún no tienes nivel. ¡Envía mensajes para ganar XP!', ephemeral=True)
 
 @bot.tree.command(name='top', description='Muestra el top 10 usuarios por nivel')
-@discord.app_commands.checks.cooldown(1, 60, key=lambda i: i.user.id)
 async def top(interaction: discord.Interaction):
     if not interaction.guild:
         await interaction.response.send_message('Este comando solo funciona en servidores.', ephemeral=True)
