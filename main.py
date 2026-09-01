@@ -1014,6 +1014,9 @@ async def on_ready():
     # Iniciar monitoreo de streams
     bot.loop.create_task(check_streams_periodically())
 
+    # Iniciar actualización de canales de estadísticas
+    bot.loop.create_task(update_stats_channel_periodically())
+
     # Iniciar actualización de temporizadores de sorteos
 # Actualización periódica del ranking
 async def update_ranking_periodically():
@@ -2481,7 +2484,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
             embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
-            embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel', inline=False)
+            embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel, /create_stats_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
             embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
         elif category == 'niveles':
@@ -2505,7 +2508,7 @@ class HelpView(discord.ui.View):
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
         elif category == 'configuracion':
-            embed.add_field(name='⚙️ Configuración', value='/config_level_channel - Configura el canal de niveles\n/config_welcome_channel - Configura el canal de bienvenida\n/config_show - Muestra la configuración actual\n/config_log_channel - Configura el canal de logs', inline=False)
+            embed.add_field(name='⚙️ Configuración', value='/config_level_channel - Configura el canal de niveles\n/config_welcome_channel - Configura el canal de bienvenida\n/config_show - Muestra la configuración actual\n/config_log_channel - Configura el canal de logs\n/create_stats_channel - Crea canal visual de estadísticas', inline=False)
         elif category == 'filtro':
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word - Agrega una palabra prohibida\n/config_remove_banned_word - Elimina una palabra prohibida', inline=False)
         elif category == 'info':
@@ -4022,6 +4025,65 @@ async def create_ranking(interaction: discord.Interaction):
 async def update_ranking_command(interaction: discord.Interaction):
     await update_ranking(interaction.guild.id)
     await interaction.response.send_message('✅ Ranking actualizado manualmente')
+
+@bot.tree.command(name='create_stats_channel', description='Crea un canal visual de estadísticas del servidor')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def create_stats_channel(interaction: discord.Interaction):
+    try:
+        # Crear categoría para canales de estadísticas si no existe
+        category = None
+        for cat in interaction.guild.categories:
+            if cat.name == '📊 Estadísticas':
+                category = cat
+                break
+        
+        if not category:
+            category = await interaction.guild.create_category('📊 Estadísticas')
+        
+        # Crear canal de voz para mostrar miembros
+        member_count = interaction.guild.member_count
+        stats_channel = await interaction.guild.create_voice_channel(
+            f'👥 Miembros: {member_count}',
+            category=category,
+            overwrites={
+                interaction.guild.default_role: discord.PermissionOverwrite(
+                    connect=False,  # Nadie puede entrar
+                    speak=False,
+                    stream=False,
+                    use_voice_activation=False
+                )
+            }
+        )
+        
+        # Guardar configuración
+        set_server_setting(interaction.guild.id, 'stats_channel_id', stats_channel.id)
+        save_data()
+        
+        await interaction.response.send_message(f'✅ Canal de estadísticas creado: {stats_channel.mention}')
+        logger.info(f'Canal de estadísticas creado en servidor {interaction.guild.name}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al crear canal: {e}', ephemeral=True)
+        logger.error(f'Error al crear canal de estadísticas: {e}')
+
+# Actualizar canal de estadísticas periódicamente
+async def update_stats_channel_periodically():
+    while True:
+        try:
+            await asyncio.sleep(60)  # Actualizar cada minuto
+            for guild in bot.guilds:
+                try:
+                    stats_channel_id = get_server_setting(guild.id, 'stats_channel_id')
+                    if stats_channel_id:
+                        channel = bot.get_channel(stats_channel_id)
+                        if channel:
+                            member_count = guild.member_count
+                            await channel.edit(name=f'👥 Miembros: {member_count}')
+                            logger.info(f'Canal de estadísticas actualizado para servidor {guild.name}: {member_count} miembros')
+                except Exception as e:
+                    logger.error(f'Error al actualizar canal de estadísticas para servidor {guild.name}: {e}')
+        except Exception as e:
+            logger.error(f'Error en actualización periódica de canales de estadísticas: {e}')
+            await asyncio.sleep(60)
 
 @bot.tree.command(name='config_stream_channel', description='Configura el canal para notificaciones de streams (Usa /config_streams)')
 @discord.app_commands.describe(channel='Canal para notificaciones de streams')
