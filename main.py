@@ -1242,58 +1242,48 @@ def create_level_up_image(user, new_level, guild):
     width = 800
     height = 400
     
-    # Crear imagen de fondo con gradiente
-    img = Image.new('RGB', (width, height), color=(20, 20, 30))
+    # Crear imagen de fondo sólido
+    img = Image.new('RGB', (width, height), color=(30, 20, 50))
     draw = ImageDraw.Draw(img)
     
-    # Gradiente de fondo (morado a azul oscuro)
+    # Gradiente simple
     for y in range(height):
-        r = int(20 + (30 * y / height))
-        g = int(20 + (20 * y / height))
-        b = int(40 + (60 * y / height))
+        intensity = int(50 * (y / height))
+        r = max(0, min(255, 30 + intensity))
+        g = max(0, min(255, 20 + intensity // 2))
+        b = max(0, min(255, 50 + intensity))
         draw.line([(0, y), (width, y)], fill=(r, g, b))
     
     # Intentar cargar fuente, usar fallback si no está disponible
     try:
-        title_font = ImageFont.truetype("arial.ttf", 56)
-        text_font = ImageFont.truetype("arial.ttf", 36)
-        small_font = ImageFont.truetype("arial.ttf", 28)
+        title_font = ImageFont.truetype("arial.ttf", 60)
+        text_font = ImageFont.truetype("arial.ttf", 40)
+        small_font = ImageFont.truetype("arial.ttf", 30)
     except:
         title_font = ImageFont.load_default()
         text_font = ImageFont.load_default()
         small_font = ImageFont.load_default()
     
-    # Efectos de brillo
-    for i in range(3):
-        draw.ellipse([(100 + i*10, 50 + i*10), (700 - i*10, 150 - i*10)], outline=(255, 215, 0, 50), width=2)
+    # Marco dorado
+    draw.rectangle([(20, 20), (width-20, height-20)], outline=(255, 215, 0), width=5)
     
-    # Título épico
-    draw.text((400, 80), "🎉 ¡LEVEL UP!", fill=(255, 215, 0), font=title_font, anchor="mm")
+    # Título
+    draw.text((width//2, 80), "🎉 LEVEL UP!", fill=(255, 215, 0), font=title_font, anchor="mm")
     
-    # Usuario con avatar (círculo)
-    avatar_size = 100
-    avatar_x = 200
-    avatar_y = 220
-    
-    # Círculo de fondo para avatar
-    draw.ellipse([(avatar_x - avatar_size//2, avatar_y - avatar_size//2), 
-                  (avatar_x + avatar_size//2, avatar_y + avatar_size//2)], 
-                 fill=(100, 50, 150), outline=(255, 215, 0), width=4)
+    # Línea separadora
+    draw.line([(100, 130), (width-100, 130)], fill=(255, 215, 0), width=3)
     
     # Nombre del usuario
-    draw.text((avatar_x, avatar_y + avatar_size//2 + 20), user.name, 
-             fill=(255, 255, 255), font=text_font, anchor="mm")
+    draw.text((width//2, 200), user.name, fill=(255, 255, 255), font=text_font, anchor="mm")
     
-    # Nivel con efecto brillante
-    level_text = f"NIVEL {new_level}"
-    draw.text((600, 220), level_text, fill=(255, 215, 0), font=title_font, anchor="mm")
+    # Nivel
+    draw.text((width//2, 260), f"NIVEL {new_level}", fill=(100, 255, 100), font=title_font, anchor="mm")
     
-    # XP actual
-    xp_text = f"XP: {new_level * 100 - 100}"
-    draw.text((600, 280), xp_text, fill=(200, 200, 200), font=small_font, anchor="mm")
+    # XP
+    draw.text((width//2, 320), f"XP: {new_level * 100 - 100}", fill=(200, 200, 200), font=small_font, anchor="mm")
     
     # Servidor
-    draw.text((400, 370), f"{guild.name}", fill=(150, 150, 150), font=small_font, anchor="mm")
+    draw.text((width//2, 370), guild.name, fill=(150, 150, 150), font=small_font, anchor="mm")
     
     # Guardar imagen en memoria
     img_bytes = io.BytesIO()
