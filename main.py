@@ -1239,8 +1239,8 @@ async def send_stream_notification(channel, streamer, guild):
 # Crear imagen de subida de nivel
 def create_level_up_image(user, new_level, guild):
     # Configuración de la imagen
-    width = 800
-    height = 400
+    width = 900
+    height = 600
     
     # Crear imagen de fondo sólido
     img = Image.new('RGB', (width, height), color=(30, 20, 50))
@@ -1256,34 +1256,68 @@ def create_level_up_image(user, new_level, guild):
     
     # Intentar cargar fuente, usar fallback si no está disponible
     try:
-        title_font = ImageFont.truetype("arial.ttf", 60)
-        text_font = ImageFont.truetype("arial.ttf", 40)
-        small_font = ImageFont.truetype("arial.ttf", 30)
+        title_font = ImageFont.truetype("arial.ttf", 50)
+        text_font = ImageFont.truetype("arial.ttf", 35)
+        small_font = ImageFont.truetype("arial.ttf", 25)
+        tiny_font = ImageFont.truetype("arial.ttf", 20)
     except:
         title_font = ImageFont.load_default()
         text_font = ImageFont.load_default()
         small_font = ImageFont.load_default()
+        tiny_font = ImageFont.load_default()
     
     # Marco dorado
     draw.rectangle([(20, 20), (width-20, height-20)], outline=(255, 215, 0), width=5)
     
     # Título
-    draw.text((width//2, 80), "🎉 LEVEL UP!", fill=(255, 215, 0), font=title_font, anchor="mm")
+    draw.text((width//2, 60), "🎉 LEVEL UP!", fill=(255, 215, 0), font=title_font, anchor="mm")
     
     # Línea separadora
-    draw.line([(100, 130), (width-100, 130)], fill=(255, 215, 0), width=3)
+    draw.line([(50, 100), (width-50, 100)], fill=(255, 215, 0), width=3)
     
-    # Nombre del usuario
-    draw.text((width//2, 200), user.name, fill=(255, 255, 255), font=text_font, anchor="mm")
+    # Información del usuario
+    draw.text((width//2, 140), user.name, fill=(255, 255, 255), font=text_font, anchor="mm")
+    draw.text((width//2, 190), f"NIVEL {new_level}", fill=(100, 255, 100), font=title_font, anchor="mm")
+    draw.text((width//2, 240), f"XP: {new_level * 100 - 100}", fill=(200, 200, 200), font=small_font, anchor="mm")
     
-    # Nivel
-    draw.text((width//2, 260), f"NIVEL {new_level}", fill=(100, 255, 100), font=title_font, anchor="mm")
+    # Línea separadora para ranking
+    draw.line([(50, 280), (width-50, 280)], fill=(255, 215, 0), width=3)
     
-    # XP
-    draw.text((width//2, 320), f"XP: {new_level * 100 - 100}", fill=(200, 200, 200), font=small_font, anchor="mm")
+    # Título del ranking
+    draw.text((width//2, 310), "🏆 TOP 10 NIVELES", fill=(255, 215, 0), font=text_font, anchor="mm")
+    
+    # Obtener top 10 usuarios del servidor
+    server_id = str(guild.id)
+    top_users = []
+    
+    if 'servers' in data and server_id in data['servers'] and 'users' in data['servers'][server_id]:
+        users = data['servers'][server_id]['users']
+        sorted_users = sorted(users.items(), key=lambda x: (x[1]['level'], x[1]['xp']), reverse=True)[:10]
+        top_users = sorted_users
+    
+    # Mostrar ranking
+    y_position = 350
+    for i, (user_id, user_data) in enumerate(top_users):
+        if i >= 10:
+            break
+        
+        medal = '🥇' if i == 0 else '🥈' if i == 1 else '🥉' if i == 2 else f'#{i + 1}'
+        username = f"Usuario {user_id[:8]}..."  # Mostrar ID parcial si no podemos obtener el nombre
+        
+        # Intentar obtener el nombre del usuario
+        try:
+            member = guild.get_member(int(user_id))
+            if member:
+                username = member.name
+        except:
+            pass
+        
+        rank_text = f"{medal} {username} - Nivel {user_data['level']}"
+        draw.text((60, y_position), rank_text, fill=(255, 255, 255), font=tiny_font, anchor="lw")
+        y_position += 25
     
     # Servidor
-    draw.text((width//2, 370), guild.name, fill=(150, 150, 150), font=small_font, anchor="mm")
+    draw.text((width//2, height-30), guild.name, fill=(150, 150, 150), font=small_font, anchor="mm")
     
     # Guardar imagen en memoria
     img_bytes = io.BytesIO()
