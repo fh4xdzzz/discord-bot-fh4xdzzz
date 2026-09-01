@@ -2376,7 +2376,7 @@ class HelpView(discord.ui.View):
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
             embed.add_field(name='ℹ️ Información', value='/ping, /info, /ayuda, /bot_servers', inline=False)
         elif category == 'niveles':
-            embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el top 5 usuarios por nivel\n/server_stats - Muestra estadísticas del servidor\n/config_level_channel - Configura canal de notificaciones de nivel\n/add_level_role - Agrega rol por nivel\n/remove_level_role - Elimina rol por nivel\n/list_level_roles - Lista roles por nivel', inline=False)
+            embed.add_field(name='📊 Niveles', value='/level - Muestra tu nivel de experiencia\n/top - Muestra el top 5 usuarios por nivel\n/server_stats - Muestra estadísticas del servidor\n/config_level_channel - Configura canal de notificaciones de nivel\n/add_level_role - Agrega rol por nivel\n/remove_level_role - Elimina rol por nivel\n/list_level_roles - Lista roles por nivel\n/add_xp - Agrega XP manualmente a un usuario', inline=False)
         elif category == 'ranking':
             embed.add_field(name='🏆 Ranking', value='/config_ranking_channel - Configura el canal del ranking\n/create_ranking - Crea el mensaje de ranking\n/update_ranking - Actualiza el ranking manualmente\n/config_level_channel - Configura canal de notificaciones de nivel', inline=False)
         elif category == 'autoroles':
@@ -3454,6 +3454,63 @@ async def info(interaction: discord.Interaction):
         embed.set_thumbnail(url=interaction.guild.icon.url)
     
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name='add_xp', description='Agrega XP manualmente a un usuario')
+@discord.app_commands.describe(user='Usuario al que agregar XP', amount='Cantidad de XP a agregar')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def add_xp(interaction: discord.Interaction, user: discord.Member, amount: int):
+    if amount <= 0:
+        await interaction.response.send_message('❌ La cantidad de XP debe ser mayor a 0', ephemeral=True)
+        return
+    
+    server_id = str(interaction.guild.id)
+    user_id = str(user.id)
+    
+    # Inicializar estructura del servidor si no existe
+    if 'servers' not in data:
+        data['servers'] = {}
+    if server_id not in data['servers']:
+        data['servers'][server_id] = {}
+    if 'users' not in data['servers'][server_id]:
+        data['servers'][server_id]['users'] = {}
+    
+    if user_id not in data['servers'][server_id]['users']:
+        data['servers'][server_id]['users'][user_id] = {'level': 1, 'xp': 0}
+    
+    old_level = data['servers'][server_id]['users'][user_id]['level']
+    data['servers'][server_id]['users'][user_id]['xp'] += amount
+    
+    # Verificar si subió de nivel
+    xp_needed = data['servers'][server_id]['users'][user_id]['level'] * 100
+    level_up = False
+    
+    while data['servers'][server_id]['users'][user_id]['xp'] >= xp_needed:
+        data['servers'][server_id]['users'][user_id]['level'] += 1
+        data['servers'][server_id]['users'][user_id]['xp'] -= xp_needed
+        xp_needed = data['servers'][server_id]['users'][user_id]['level'] * 100
+        level_up = True
+    
+    new_level = data['servers'][server_id]['users'][user_id]['level']
+    
+    # Asignar roles por nivel si subió
+    if level_up:
+        level_roles = data['servers'][server_id].get('level_roles', {})
+        if new_level in level_roles:
+            role_id = level_roles[new_level]
+            role = interaction.guild.get_role(role_id)
+            if role:
+                try:
+                    await user.add_roles(role)
+                    logger.info(f'Rol {role.name} asignado a {user.name} por alcanzar nivel {new_level}')
+                except discord.errors.Forbidden:
+                    logger.warning('Error: El bot no tiene permisos para asignar roles (Manage Roles)')
+    
+    save_data()
+    
+    if level_up:
+        await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. ¡Subió al nivel {new_level}!')
+    else:
+        await interaction.response.send_message(f'✅ {amount} XP agregados a {user.mention}. Nivel actual: {new_level}')
 
 @bot.tree.command(name='level', description='Muestra tu nivel y XP actual')
 @discord.app_commands.checks.cooldown(1, 30, key=lambda i: i.user.id)
