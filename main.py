@@ -4030,33 +4030,31 @@ async def update_ranking_command(interaction: discord.Interaction):
 @discord.app_commands.checks.has_permissions(administrator=True)
 async def create_stats_channel(interaction: discord.Interaction):
     try:
-        # Crear categoría para canales de estadísticas si no existe
-        category = None
-        for cat in interaction.guild.categories:
-            if cat.name == '📊 Estadísticas':
-                category = cat
-                break
-        
-        if not category:
-            category = await interaction.guild.create_category('📊 Estadísticas')
-        
-        # Crear canal de voz para mostrar miembros
+        # Crear canal de texto para mostrar miembros
         member_count = interaction.guild.member_count
-        stats_channel = await interaction.guild.create_voice_channel(
-            f'👥 Miembros: {member_count}',
-            category=category,
+        stats_channel = await interaction.guild.create_text_channel(
+            f'👥-miembros-{member_count}',
             overwrites={
                 interaction.guild.default_role: discord.PermissionOverwrite(
-                    connect=False,  # Nadie puede entrar
-                    speak=False,
-                    stream=False,
-                    use_voice_activation=False
+                    send_messages=False,  # Nadie puede enviar mensajes
+                    read_messages=True,    # Pero pueden ver el canal
+                    add_reactions=False
                 )
             }
         )
         
+        # Enviar mensaje inicial
+        embed = discord.Embed(
+            title='📊 Estadísticas del Servidor',
+            description=f'**Miembros Totales:** {member_count}\n\nEste canal se actualiza automáticamente cada minuto.',
+            color=0x3498db
+        )
+        embed.set_footer(text='Sistema de Estadísticas Automático')
+        await stats_channel.send(embed=embed)
+        
         # Guardar configuración
         set_server_setting(interaction.guild.id, 'stats_channel_id', stats_channel.id)
+        set_server_setting(interaction.guild.id, 'stats_message_id', (await stats_channel.fetch_message(limit=1))[0].id)
         save_data()
         
         await interaction.response.send_message(f'✅ Canal de estadísticas creado: {stats_channel.mention}')
@@ -4073,11 +4071,26 @@ async def update_stats_channel_periodically():
             for guild in bot.guilds:
                 try:
                     stats_channel_id = get_server_setting(guild.id, 'stats_channel_id')
-                    if stats_channel_id:
+                    stats_message_id = get_server_setting(guild.id, 'stats_message_id')
+                    if stats_channel_id and stats_message_id:
                         channel = bot.get_channel(stats_channel_id)
                         if channel:
                             member_count = guild.member_count
-                            await channel.edit(name=f'👥 Miembros: {member_count}')
+                            await channel.edit(name=f'👥-miembros-{member_count}')
+                            
+                            # Actualizar mensaje del canal
+                            try:
+                                message = await channel.fetch_message(stats_message_id)
+                                embed = discord.Embed(
+                                    title='📊 Estadísticas del Servidor',
+                                    description=f'**Miembros Totales:** {member_count}\n\nEste canal se actualiza automáticamente cada minuto.',
+                                    color=0x3498db
+                                )
+                                embed.set_footer(text=f'Última actualización: {datetime.now().strftime("%H:%M:%S")}')
+                                await message.edit(embed=embed)
+                            except:
+                                pass
+                            
                             logger.info(f'Canal de estadísticas actualizado para servidor {guild.name}: {member_count} miembros')
                 except Exception as e:
                     logger.error(f'Error al actualizar canal de estadísticas para servidor {guild.name}: {e}')
