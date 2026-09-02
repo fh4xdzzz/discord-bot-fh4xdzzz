@@ -12,6 +12,22 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 from PIL import Image, ImageDraw, ImageFont
+import pytz
+
+# Configuración de zona horaria República Dominicana (UTC-4)
+TIMEZONE = pytz.timezone('America/Santo_Domingo')
+
+def get_formatted_time(format_12h=True, include_date=False):
+    """Obtiene la hora actual en formato 12h con zona horaria RD"""
+    now = datetime.now(TIMEZONE)
+    if include_date and format_12h:
+        return now.strftime('%d/%m/%Y %I:%M %p')
+    elif include_date:
+        return now.strftime('%d/%m/%Y %H:%M')
+    elif format_12h:
+        return now.strftime('%I:%M %p')
+    else:
+        return now.strftime('%H:%M')
 
 # Configurar logging
 logging.basicConfig(
@@ -1119,7 +1135,7 @@ def create_ranking_embed(guild_id):
             
             embed.add_field(name=f'#{i + 1} {username}', value=user_info, inline=False)
 
-    embed.set_footer(text=f'Última actualización: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} | Sistema de Niveles')
+    embed.set_footer(text=f'Última actualización: {get_formatted_time(include_date=True)} | Sistema de Niveles')
     embed.set_image(url=bot.user.display_avatar.url)
 
     return embed
@@ -1656,7 +1672,7 @@ async def delete_and_warn(message, reason):
         )
         
         embed.add_field(name='👤 Usuario', value=message.author.name, inline=True)
-        embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y %H:%M:%S'), inline=True)
+        embed.add_field(name='📅 Fecha', value=get_formatted_time(include_date=True), inline=True)
         embed.add_field(name='📝 Mensaje', value=message.content[:100] + '...' if len(message.content) > 100 else message.content, inline=False)
         
         await message.channel.send(embed=embed)
@@ -2079,7 +2095,7 @@ async def on_voice_state_update(member, before, after):
                 {'name': 'Usuario', 'value': member.name, 'inline': True},
                 {'name': 'Canal', 'value': after.channel.name, 'inline': True},
                 {'name': 'Miembros en canal', 'value': str(len(after.channel.members)), 'inline': True},
-                {'name': 'Hora de entrada', 'value': datetime.now().strftime('%H:%M:%S'), 'inline': True}
+                {'name': 'Hora de entrada', 'value': get_formatted_time(), 'inline': True}
             ],
             author={'name': member.name, 'icon_url': member.display_avatar.url}
         )
@@ -2786,7 +2802,7 @@ class TicketPanelView(discord.ui.View):
                 embed.add_field(name='Usuario', value=interaction.user.mention, inline=True)
                 embed.add_field(name='Prioridad', value='🟡 Media', inline=True)
                 embed.add_field(name='Estado', value='🟢 Abierto', inline=True)
-                embed.set_footer(text=f'Creado el {datetime.now().strftime("%d/%m/%Y %H:%M:%S")} | ID: {ticket_channel.id}')
+                embed.set_footer(text=f'Creado el {get_formatted_time(include_date=True)} | ID: {ticket_channel.id}')
 
                 # Crear vista con botones de control para administradores
                 view = TicketControlView()
@@ -3163,7 +3179,7 @@ async def ticket_stats(interaction: discord.Interaction):
     )
     embed.add_field(name='🎯 Distribución de Prioridades', value=priority_text, inline=False)
 
-    embed.set_footer(text=f'Actualizado: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
+    embed.set_footer(text=f'Actualizado: {get_formatted_time(include_date=True)}')
     embed.set_thumbnail(url=bot.user.display_avatar.url)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3888,7 +3904,7 @@ async def server_stats(interaction: discord.Interaction):
     embed.add_field(name='👑 Propietario', value=guild.owner.mention if guild.owner else 'Desconocido', inline=True)
 
     embed.set_thumbnail(url=guild.icon.url if guild.icon else guild.me.display_avatar.url)
-    embed.set_footer(text=f'Actualizado: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+    embed.set_footer(text=f'Actualizado: {get_formatted_time(include_date=True)}')
 
     await interaction.response.send_message(embed=embed)
 
@@ -4083,7 +4099,7 @@ async def send_announcement(interaction: discord.Interaction, title: str, messag
             color=0xFFD700
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
-        embed.set_footer(text=f'Enviado por {interaction.user.name} | {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        embed.set_footer(text=f'Enviado por {interaction.user.name} | {get_formatted_time(include_date=True)}')
         
         await channel.send(embed=embed)
         await interaction.response.send_message(f'✅ Anuncio enviado a {channel.mention}')
@@ -4150,11 +4166,11 @@ async def bot_update(interaction: discord.Interaction, version: str, changes: st
         )
         
         embed.add_field(name='📋 Tipo de Actualización', value=f'{emoji} {update_type.capitalize()}', inline=True)
-        embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
-        embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
+        embed.add_field(name='📅 Fecha', value=datetime.now(TIMEZONE).strftime('%d/%m/%Y'), inline=True)
+        embed.add_field(name='⏰ Hora', value=get_formatted_time(), inline=True)
         
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
-        embed.set_footer(text=f'Actualización enviada por {interaction.user.name} | {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        embed.set_footer(text=f'Actualización enviada por {interaction.user.name} | {get_formatted_time(include_date=True)}')
         embed.set_thumbnail(url=bot.user.display_avatar.url if bot.user else None)
         
         if important:
@@ -4576,8 +4592,8 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
         embed.add_field(name='🚀 Cómo verificar', value='Reacciona al botón ✅ para obtener acceso', inline=False)
         embed.add_field(name='✅ Verificados', value='**0**', inline=True)
-        embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
-        embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
+        embed.add_field(name='📅 Fecha', value=datetime.now(TIMEZONE).strftime('%d/%m/%Y'), inline=True)
+        embed.add_field(name='⏰ Hora', value=get_formatted_time(), inline=True)
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
         embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
 
@@ -4840,7 +4856,7 @@ async def test_log(interaction: discord.Interaction):
         color=0x3498db,
         fields=[
             {'name': 'Usuario', 'value': interaction.user.name, 'inline': True},
-            {'name': 'Hora', 'value': datetime.now().strftime('%H:%M:%S'), 'inline': True}
+            {'name': 'Hora', 'value': get_formatted_time(), 'inline': True}
         ],
         author={'name': interaction.user.name, 'icon_url': interaction.user.display_avatar.url}
     )
