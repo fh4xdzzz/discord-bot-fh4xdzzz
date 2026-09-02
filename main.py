@@ -4352,12 +4352,17 @@ async def update_ranking_command(interaction: discord.Interaction):
 async def test_boost(interaction: discord.Interaction):
     """Comando de prueba para probar el sistema de boosts"""
     try:
+        logger.info('Iniciando comando test_boost')
+        
         # Usar respuesta diferida para operaciones largas
         await interaction.response.defer(thinking=True)
+        logger.info('Respuesta diferida enviada exitosamente')
         
         # Usar al usuario que ejecuta el comando como "booster" de prueba
         member = interaction.user
         boost_count = interaction.guild.premium_subscription_count
+        
+        logger.info(f'Generando imagen para usuario {member.name} con {boost_count} boosts')
         
         # Generar imagen de prueba
         user_avatar_url = member.display_avatar.url
@@ -4367,6 +4372,8 @@ async def test_boost(interaction: discord.Interaction):
         image_bytes = await create_boost_image(user_avatar_url, user_name, user_tag, boost_count)
         
         if image_bytes:
+            logger.info('Imagen generada exitosamente')
+            
             # Crear archivo de imagen
             image_file = discord.File(image_bytes, filename='boost_test.png')
             
@@ -4383,13 +4390,17 @@ async def test_boost(interaction: discord.Interaction):
             embed.set_footer(text=f'Prueba generada en {get_formatted_time(include_date=True)}')
             
             await interaction.followup.send(embed=embed, file=image_file)
-            logger.info(f'Prueba de boost generada para usuario {member.name} en servidor {interaction.guild.name}')
+            logger.info(f'Prueba de boost enviada exitosamente para usuario {member.name}')
         else:
+            logger.error('Error: image_bytes es None')
             await interaction.followup.send('❌ Error al generar la imagen de prueba', ephemeral=True)
             
     except Exception as e:
-        logger.error(f'Error en prueba de boost: {e}')
-        await interaction.followup.send(f'❌ Error: {e}', ephemeral=True)
+        logger.error(f'Error en prueba de boost: {e}', exc_info=True)
+        try:
+            await interaction.followup.send(f'❌ Error: {e}', ephemeral=True)
+        except Exception as followup_error:
+            logger.error(f'Error al enviar followup: {followup_error}', exc_info=True)
 
 @bot.tree.command(name='config_boost_channel', description='Configura el canal para anuncios de boosts')
 @discord.app_commands.describe(channel='Canal donde se enviarán los anuncios de boosts')
