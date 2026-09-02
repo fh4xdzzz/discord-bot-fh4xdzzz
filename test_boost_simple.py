@@ -123,18 +123,23 @@ def create_boost_image_test(user_avatar_url, user_name, user_tag, boost_count):
         draw_text_with_outline(subtitle_text, (subtitle_x, 65), subtitle_font, '#ff4757', '#000000', 3)
         
         # Texto de nombre de usuario (debajo del avatar)
-        username_text = f"@{user_tag}"
+        # Usar el username completo o formato clásico si el discriminator no es 0
+        if user_tag and user_tag != "0":
+            username_text = f"@{user_name}#{user_tag}"
+        else:
+            username_text = f"@{user_name}"
+        
         username_bbox = draw.textbbox((0, 0), username_text, font=username_font)
         username_width = username_bbox[2] - username_bbox[0]
         username_x = (width - username_width) // 2
         draw_text_with_outline(username_text, (username_x, 385), username_font, '#ffffff', '#000000', 3)
         
-        # Nombre del usuario más pequeño
-        name_text = user_name
-        name_bbox = draw.textbbox((0, 0), name_text, font=username_font)
-        name_width = name_bbox[2] - name_bbox[0]
-        name_x = (width - name_width) // 2
-        draw_text_with_outline(name_text, (name_x, 355), username_font, '#ffffff', '#000000', 3)
+        # Mensaje de agradecimiento en lugar del nombre duplicado
+        thanks_text = "¡GRACIAS POR BOOSTEAR!"
+        thanks_bbox = draw.textbbox((0, 0), thanks_text, font=username_font)
+        thanks_width = thanks_bbox[2] - thanks_bbox[0]
+        thanks_x = (width - thanks_width) // 2
+        draw_text_with_outline(thanks_text, (thanks_x, 355), username_font, '#ffd700', '#000000', 3)
         
         # Texto de mensaje principal (en amarillo grande como en la imagen)
         message_text = "GRACIAS POR LA MEJORA"
