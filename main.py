@@ -1833,7 +1833,33 @@ async def on_raw_reaction_add(payload):
                         logger.debug(f'No se pudo enviar DM a {member.name} (DMs desactivados)')
                     logger.info(f'{member.name} verificado exitosamente en servidor {guild.name}')
                 else:
-                    logger.debug(f'{member.name} ya está verificado en servidor {guild.name}')
+                    # Si no está verificado, enviar mensaje de verificación por DM
+                    try:
+                        verification_role_id = data['servers'][server_id].get('verification_role')
+                        if verification_role_id:
+                            embed = discord.Embed(
+                                title='🔒 VERIFICACIÓN REQUERIDA',
+                                description=f'¡Hola {member.mention}! Reacciona con ✅ para obtener acceso completo al servidor',
+                                color=0xFF6B6B
+                            )
+                            embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
+                            embed.add_field(name='🚀 Cómo verificar', value='Reacciona al botón ✅ para obtener acceso', inline=False)
+                            embed.set_footer(text='Sistema de verificación automática')
+                            embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+                            
+                            view = VerificationView(str(guild.id), None)
+                            message = await member.send(embed=embed, view=view)
+                            
+                            # Actualizar la vista con el ID del mensaje DM
+                            view.message_id = str(message.id)
+                            updated_view = VerificationView(str(guild.id), str(message.id))
+                            await message.edit(view=updated_view)
+                            bot.add_view(updated_view)
+                            
+                            logger.info(f'Mensaje de verificación enviado por DM a {member.name} en servidor {guild.name}')
+                    except discord.errors.Forbidden:
+                        logger.debug(f'No se pudo enviar DM de verificación a {member.name} (DMs desactivados)')
+                    logger.debug(f'{member.name} no está verificado en servidor {guild.name}')
             except discord.errors.Forbidden as e:
                 logger.error(f'Error de permisos en servidor {guild.name}: {e}')
                 logger.error('El bot necesita permisos: Manage Roles, Send Messages')
@@ -4463,35 +4489,42 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         return
 
     try:
+        # Enviar mensaje privado al usuario en lugar de mensaje público
+        user = interaction.user
+        
         embed = discord.Embed(
             title='🔒 VERIFICACIÓN REQUERIDA',
-            description='Reacciona con ✅ para obtener acceso completo al servidor',
+            description=f'¡Hola {user.mention}! Reacciona con ✅ para obtener acceso completo al servidor',
             color=0xFF6B6B
         )
 
         embed.add_field(name='📋 Beneficios', value='✅ Acceso a canales\n✅ Participar en chats\n✅ Sorteos y eventos\n✅ Acceso completo', inline=False)
-        embed.add_field(name='🚀 Cómo verificar', value='Reacciona al mensaje ✅ para obtener acceso', inline=False)
+        embed.add_field(name='🚀 Cómo verificar', value='Reacciona al botón ✅ para obtener acceso', inline=False)
         embed.add_field(name='✅ Verificados', value='**0**', inline=True)
         embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
         embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
-        embed.set_thumbnail(url=bot.user.display_avatar.url)
+        embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
 
-        # Crear vista con botón de verificación (se actualiza después de crear el mensaje)
-        view = VerificationView(str(channel.id), None)
-
-        message = await channel.send(embed=embed, view=view)
-
-        # Actualizar la vista con el ID del mensaje
-        view.message_id = str(message.id)
-
-        # Registrar vista persistente
-        updated_view = VerificationView(str(channel.id), str(message.id))
-        await message.edit(view=updated_view)
-        bot.add_view(updated_view)
-
-        # Guardar el message_id específico del servidor
-        data['servers'][server_id]['verification_message_id'] = message.id
+        # Enviar mensaje privado al usuario
+        try:
+            view = VerificationView(str(channel.id), None)
+            message = await user.send(embed=embed, view=view)
+            
+            # Actualizar la vista con el ID del mensaje DM
+            view.message_id = str(message.id)
+            updated_view = VerificationView(str(channel.id), str(message.id))
+            await message.edit(view=updated_view)
+            bot.add_view(updated_view)
+            
+            # Guardar configuración
+            data['servers'][server_id]['verification_dm_message_id'] = message.id
+            save_data()
+            
+            await interaction.response.send_message(f'✅ Mensaje de verificación enviado a {user.mention} por DM', ephemeral=True)
+        except discord.Forbidden:
+            await interaction.response.send_message('❌ No pude enviar mensaje privado. El usuario tiene DMs desactivados.', ephemeral=True)
+            return
         data['servers'][server_id]['verification_channel'] = channel.id
         save_data()
 
