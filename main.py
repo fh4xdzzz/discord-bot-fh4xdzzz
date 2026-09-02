@@ -2484,14 +2484,15 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             # Borde púrpura brillante
             draw.rectangle([(10, 10), (width-10, height-10)], outline='#9b59b6', width=3)
         
-        # Dibujar círculo para el avatar
-        avatar_x, avatar_y = width // 2 - 100, height // 2 - 120
-        draw.ellipse([avatar_x, avatar_y, avatar_x + 200, avatar_y + 200], outline='#9b59b6', width=4)
+        # Dibujar círculo para el avatar (más grande y centrado como en la imagen de referencia)
+        avatar_x, avatar_y = width // 2 - 120, height // 2 - 140
+        draw.ellipse([avatar_x, avatar_y, avatar_x + 240, avatar_y + 240], outline='#9b59b6', width=6)
         
-        # Pegar avatar en el centro
-        avatar_mask = Image.new('L', (200, 200), 0)
+        # Pegar avatar en el centro (más grande)
+        avatar = avatar.resize((240, 240))
+        avatar_mask = Image.new('L', (240, 240), 0)
         avatar_mask_draw = ImageDraw.Draw(avatar_mask)
-        avatar_mask_draw.ellipse([(0, 0), (200, 200)], fill=255)
+        avatar_mask_draw.ellipse([(0, 0), (240, 240)], fill=255)
         avatar.putalpha(avatar_mask)
         image.paste(avatar, (avatar_x, avatar_y), avatar)
         
@@ -2506,69 +2507,79 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             ]
             
             title_font = None
-            text_font = None
+            subtitle_font = None
+            username_font = None
+            message_font = None
             small_font = None
             
             for font_path in font_paths:
                 try:
                     if not title_font:
-                        title_font = ImageFont.truetype(font_path, 40)
-                    if not text_font:
-                        text_font = ImageFont.truetype(font_path, 24)
+                        title_font = ImageFont.truetype(font_path, 45)
+                    if not subtitle_font:
+                        subtitle_font = ImageFont.truetype(font_path, 35)
+                    if not username_font:
+                        username_font = ImageFont.truetype(font_path, 28)
+                    if not message_font:
+                        message_font = ImageFont.truetype(font_path, 50)
                     if not small_font:
-                        small_font = ImageFont.truetype(font_path, 18)
-                    if title_font and text_font and small_font:
+                        small_font = ImageFont.truetype(font_path, 20)
+                    if title_font and subtitle_font and username_font and message_font and small_font:
                         break
                 except:
                     continue
             
             # Si no se encontró ninguna fuente, usar por defecto
-            if not title_font or not text_font or not small_font:
+            if not title_font or not subtitle_font or not username_font or not message_font or not small_font:
                 title_font = ImageFont.load_default()
-                text_font = ImageFont.load_default()
+                subtitle_font = ImageFont.load_default()
+                username_font = ImageFont.load_default()
+                message_font = ImageFont.load_default()
                 small_font = ImageFont.load_default()
                 
         except Exception as e:
             logger.warning(f'Error al cargar fuentes: {e}, usando fuente por defecto')
             title_font = ImageFont.load_default()
-            text_font = ImageFont.load_default()
+            subtitle_font = ImageFont.load_default()
+            username_font = ImageFont.load_default()
+            message_font = ImageFont.load_default()
             small_font = ImageFont.load_default()
         
-        # Título "DISCORD BOT"
+        # Título "DISCORD BOT" (posicionado más arriba como en la imagen de referencia)
         title_text = "DISCORD BOT"
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_width = title_bbox[2] - title_bbox[0]
-        draw.text(((width - title_width) // 2, 30), title_text, fill='#9b59b6', font=title_font)
+        draw.text(((width - title_width) // 2, 20), title_text, fill='#9b59b6', font=title_font)
         
-        # Subtítulo "BOOST SERVER"
+        # Subtítulo "BOOST SERVER" (en rojo brillante como en la imagen)
         subtitle_text = "BOOST SERVER"
-        subtitle_bbox = draw.textbbox((0, 0), subtitle_text, font=text_font)
+        subtitle_bbox = draw.textbbox((0, 0), subtitle_text, font=subtitle_font)
         subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
-        draw.text(((width - subtitle_width) // 2, 80), subtitle_text, fill='#e91e63', font=text_font)
+        draw.text(((width - subtitle_width) // 2, 70), subtitle_text, fill='#ff0000', font=subtitle_font)
         
-        # Texto de agradecimiento
-        thanks_text = f"¡{user_name} @{user_tag}"
-        thanks_bbox = draw.textbbox((0, 0), thanks_text, font=text_font)
-        thanks_width = thanks_bbox[2] - thanks_bbox[0]
-        draw.text(((width - thanks_width) // 2, 340), thanks_text, fill='#ffffff', font=text_font)
+        # Texto de nombre de usuario (debajo del avatar)
+        username_text = f"¡{user_name} @{user_tag}"
+        username_bbox = draw.textbbox((0, 0), username_text, font=username_font)
+        username_width = username_bbox[2] - username_bbox[0]
+        draw.text(((width - username_width) // 2, 380), username_text, fill='#ffffff', font=username_font)
         
-        # Texto de mensaje
+        # Texto de mensaje principal (en amarillo grande como en la imagen)
         message_text = "GRACIAS POR LA MEJORA"
-        message_bbox = draw.textbbox((0, 0), message_text, font=title_font)
+        message_bbox = draw.textbbox((0, 0), message_text, font=message_font)
         message_width = message_bbox[2] - message_bbox[0]
-        draw.text(((width - message_width) // 2, 380), message_text, fill='#ffd700', font=title_font)
+        draw.text(((width - message_width) // 2, 420), message_text, fill='#ffd700', font=message_font)
         
-        # Texto de conteo de boosts
+        # Texto de conteo de boosts (en blanco como en la imagen)
         boost_text = f"AHORA EL SERVER TIENE {boost_count} MEJORAS"
-        boost_bbox = draw.textbbox((0, 0), boost_text, font=text_font)
+        boost_bbox = draw.textbbox((0, 0), boost_text, font=username_font)
         boost_width = boost_bbox[2] - boost_bbox[0]
-        draw.text(((width - boost_width) // 2, 430), boost_text, fill='#9b59b6', font=text_font)
+        draw.text(((width - boost_width) // 2, 480), boost_text, fill='#ffffff', font=username_font)
         
-        # Texto inferior
+        # Texto inferior (en rojo como en la imagen)
         bottom_text = "¡BOOSTEA AHORA! Y FORMA PARTE DEL CRECIMIENTO"
         bottom_bbox = draw.textbbox((0, 0), bottom_text, font=small_font)
         bottom_width = bottom_bbox[2] - bottom_bbox[0]
-        draw.text(((width - bottom_width) // 2, 520), bottom_text, fill='#e91e63', font=small_font)
+        draw.text(((width - bottom_width) // 2, 530), bottom_text, fill='#ff0000', font=small_font)
         
         # Guardar imagen en memoria
         img_byte_arr = io.BytesIO()
