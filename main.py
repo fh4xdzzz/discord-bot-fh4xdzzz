@@ -2508,7 +2508,7 @@ class HelpView(discord.ui.View):
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel, /create_stats_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
@@ -2530,7 +2530,7 @@ class HelpView(discord.ui.View):
         elif category == 'tickets':
             embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_panel_channel - Configura canal del panel\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal configurado\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal configurado', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones', inline=False)
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
         elif category == 'configuracion':
@@ -4966,13 +4966,13 @@ async def send_message(interaction: discord.Interaction, channel: discord.TextCh
         logger.error(f'Error al enviar mensaje: {e}')
         await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
 
-@bot.tree.command(name='send_announcement', description='Envía un anuncio al canal de notificaciones')
+@bot.tree.command(name='notify_members', description='Envía una notificación al canal de notificaciones')
 @discord.app_commands.describe(
-    message='Mensaje del anuncio',
+    message='Mensaje de la notificación',
     important='¿Es importante? (mencionará @everyone)'
 )
 @discord.app_commands.checks.has_permissions(administrator=True)
-async def send_announcement(interaction: discord.Interaction, message: str, important: bool = False):
+async def notify_members(interaction: discord.Interaction, message: str, important: bool = False):
     notifications_channel_id = get_server_setting(interaction.guild.id, 'notifications_channel')
     
     if not notifications_channel_id:
