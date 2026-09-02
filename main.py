@@ -2508,7 +2508,7 @@ class HelpView(discord.ui.View):
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members, /bot_update', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel, /create_stats_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
@@ -2530,7 +2530,7 @@ class HelpView(discord.ui.View):
         elif category == 'tickets':
             embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_panel_channel - Configura canal del panel\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal configurado\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones\n/bot_update - Envía anuncio de actualización del bot', inline=False)
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
         elif category == 'configuracion':
@@ -4089,6 +4089,83 @@ async def send_announcement(interaction: discord.Interaction, title: str, messag
         await interaction.response.send_message(f'✅ Anuncio enviado a {channel.mention}')
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al enviar anuncio: {e}', ephemeral=True)
+
+@bot.tree.command(name='bot_update', description='Envía un anuncio de actualización del bot al canal de anuncios')
+@discord.app_commands.describe(
+    version='Versión de la actualización (ej: v1.2.0)',
+    changes='Cambios y mejoras implementadas',
+    update_type='Tipo de actualización',
+    important='¿Mencionar @everyone?'
+)
+@discord.app_commands.choices(
+    update_type=[
+        discord.app_commands.Choice(name='🎉 Nueva Funcionalidad', value='feature'),
+        discord.app_commands.Choice(name='🐛 Corrección de Bug', value='bugfix'),
+        discord.app_commands.Choice(name='⚡ Mejora de Rendimiento', value='performance'),
+        discord.app_commands.Choice(name='🔒 Seguridad', value='security'),
+        discord.app_commands.Choice(name='🎨 Mejora Visual', value='ui'),
+        discord.app_commands.Choice(name='📚 Documentación', value='docs')
+    ]
+)
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def bot_update(interaction: discord.Interaction, version: str, changes: str, update_type: str = 'feature', important: bool = False):
+    announcement_channel_id = get_server_setting(interaction.guild.id, 'announcement_channel')
+    
+    if not announcement_channel_id:
+        await interaction.response.send_message('❌ Primero configura el canal de anuncios con /config_announcement_channel', ephemeral=True)
+        return
+    
+    channel = bot.get_channel(announcement_channel_id)
+    if not channel:
+        await interaction.response.send_message('❌ Canal de anuncios no encontrado', ephemeral=True)
+        return
+    
+    # Colores según tipo de actualización
+    type_colors = {
+        'feature': 0x00FF00,    # Verde
+        'bugfix': 0xFF6B6B,     # Rojo
+        'performance': 0x3498db, # Azul
+        'security': 0x9B59B6,   # Púrpura
+        'ui': 0xFF69B4,         # Rosa
+        'docs': 0x95A5A6        # Gris
+    }
+    
+    type_emojis = {
+        'feature': '🎉',
+        'bugfix': '🐛',
+        'performance': '⚡',
+        'security': '🔒',
+        'ui': '🎨',
+        'docs': '📚'
+    }
+    
+    color = type_colors.get(update_type, 0xFFD700)
+    emoji = type_emojis.get(update_type, '🔄')
+    
+    try:
+        embed = discord.Embed(
+            title=f'{emoji} ACTUALIZACIÓN DEL BOT {version}',
+            description=changes,
+            color=color
+        )
+        
+        embed.add_field(name='📋 Tipo de Actualización', value=f'{emoji} {update_type.capitalize()}', inline=True)
+        embed.add_field(name='📅 Fecha', value=datetime.now().strftime('%d/%m/%Y'), inline=True)
+        embed.add_field(name='⏰ Hora', value=datetime.now().strftime('%H:%M'), inline=True)
+        
+        embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
+        embed.set_footer(text=f'Actualización enviada por {interaction.user.name} | {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        embed.set_thumbnail(url=bot.user.display_avatar.url if bot.user else None)
+        
+        if important:
+            await channel.send(f'@everyone 🚀 ¡Nueva actualización del bot disponible!', embed=embed)
+        else:
+            await channel.send(embed=embed)
+            
+        await interaction.response.send_message(f'✅ Anuncio de actualización enviado a {channel.mention}')
+        print(f'[Update] Anuncio de actualización {version} enviado por {interaction.user.name} en servidor {interaction.guild.name}')
+    except Exception as e:
+        await interaction.response.send_message(f'❌ Error al enviar anuncio de actualización: {e}', ephemeral=True)
 
 @bot.tree.command(name='create_stats_channel', description='Crea un canal visual de estadísticas del servidor')
 @discord.app_commands.checks.has_permissions(administrator=True)
