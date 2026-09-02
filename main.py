@@ -145,7 +145,8 @@ def create_default_data():
             'giveaway_channel': None,
             'giveaway_admin_role': None,
             'giveaway_participant_role': None,
-            'giveaway_announcement_channel': None
+            'giveaway_announcement_channel': None,
+            'boost_channel': None
         },
 
         'user_notifications': {},
@@ -1953,6 +1954,13 @@ async def on_member_update(before, after):
         new_roles = [role for role in after.roles if role not in before.roles]
         removed_roles = [role for role in before.roles if role not in after.roles]
         
+        # Detectar si el usuario obtuvo el rol de booster
+        is_booster = any(role.premium_subscriber for role in new_roles)
+        
+        if is_booster:
+            # Generar imagen personalizada de agradecimiento
+            await send_boost_image_announcement(after, after.guild.premium_subscription_count)
+        
         if new_roles:
             await send_log(
                 guild=after.guild,
@@ -2426,6 +2434,222 @@ async def on_guild_update(before, after):
             thumbnail=after.icon.url if after.icon else None
         )
 
+    # Detección de boosts del servidor
+    if before.premium_subscription_level != after.premium_subscription_level:
+        boost_level = after.premium_subscription_level
+        boost_count = after.premium_subscription_count
+        
+        await send_log(
+            guild=after,
+            title='🚀 Nivel de Boost Cambiado',
+            description=f'El servidor ahora tiene nivel {boost_level} con {boost_count} boosts',
+            color=0xFF69B4,
+            fields=[
+                {'name': 'Nivel anterior', 'value': str(before.premium_subscription_level), 'inline': True},
+                {'name': 'Nivel nuevo', 'value': str(boost_level), 'inline': True},
+                {'name': 'Total boosts', 'value': str(boost_count), 'inline': True}
+            ]
+        )
+        
+        # Enviar mensaje de agradecimiento por boost
+        await send_boost_announcement(after, boost_count)
+
+# Función para generar imagen de agradecimiento por boost
+async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
+    """Genera una imagen personalizada de agradecimiento por boost"""
+    try:
+        # Descargar avatar del usuario
+        response = requests.get(user_avatar_url)
+        avatar = Image.open(io.BytesIO(response.content))
+        avatar = avatar.resize((200, 200))
+        
+        # Crear imagen base (fondo oscuro con acentos púrpura)
+        width, height = 800, 600
+        image = Image.new('RGB', (width, height), color='#1a1a2e')
+        draw = ImageDraw.Draw(image)
+        
+        # Gradiente de fondo (simulado con rectángulos)
+        for i in range(height):
+            color_intensity = int(26 + (i / height) * 30)
+            draw.rectangle([(0, i), (width, i+1)], fill=(color_intensity, color_intensity, color_intensity + 20))
+        
+        # Borde púrpura brillante
+        draw.rectangle([(10, 10), (width-10, height-10)], outline='#9b59b6', width=3)
+        
+        # Dibujar círculo para el avatar
+        avatar_x, avatar_y = width // 2 - 100, height // 2 - 120
+        draw.ellipse([avatar_x, avatar_y, avatar_x + 200, avatar_y + 200], outline='#9b59b6', width=4)
+        
+        # Pegar avatar en el centro
+        avatar_mask = Image.new('L', (200, 200), 0)
+        avatar_mask_draw = ImageDraw.Draw(avatar_mask)
+        avatar_mask_draw.ellipse([(0, 0), (200, 200)], fill=255)
+        avatar.putalpha(avatar_mask)
+        image.paste(avatar, (avatar_x, avatar_y), avatar)
+        
+        # Intentar cargar fuente, si no existe usar fuente por defecto
+        try:
+            # Intentar varias fuentes comunes
+            font_paths = [
+                "arial.ttf",
+                "DejaVuSans.ttf",
+                "FreeSans.ttf",
+                "LiberationSans-Regular.ttf"
+            ]
+            
+            title_font = None
+            text_font = None
+            small_font = None
+            
+            for font_path in font_paths:
+                try:
+                    if not title_font:
+                        title_font = ImageFont.truetype(font_path, 40)
+                    if not text_font:
+                        text_font = ImageFont.truetype(font_path, 24)
+                    if not small_font:
+                        small_font = ImageFont.truetype(font_path, 18)
+                    if title_font and text_font and small_font:
+                        break
+                except:
+                    continue
+            
+            # Si no se encontró ninguna fuente, usar por defecto
+            if not title_font or not text_font or not small_font:
+                title_font = ImageFont.load_default()
+                text_font = ImageFont.load_default()
+                small_font = ImageFont.load_default()
+                
+        except Exception as e:
+            logger.warning(f'Error al cargar fuentes: {e}, usando fuente por defecto')
+            title_font = ImageFont.load_default()
+            text_font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+        
+        # Título "DISCORD BOT"
+        title_text = "DISCORD BOT"
+        title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
+        title_width = title_bbox[2] - title_bbox[0]
+        draw.text(((width - title_width) // 2, 30), title_text, fill='#9b59b6', font=title_font)
+        
+        # Subtítulo "BOOST SERVER"
+        subtitle_text = "BOOST SERVER"
+        subtitle_bbox = draw.textbbox((0, 0), subtitle_text, font=text_font)
+        subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
+        draw.text(((width - subtitle_width) // 2, 80), subtitle_text, fill='#e91e63', font=text_font)
+        
+        # Texto de agradecimiento
+        thanks_text = f"¡{user_name} @{user_tag}"
+        thanks_bbox = draw.textbbox((0, 0), thanks_text, font=text_font)
+        thanks_width = thanks_bbox[2] - thanks_bbox[0]
+        draw.text(((width - thanks_width) // 2, 340), thanks_text, fill='#ffffff', font=text_font)
+        
+        # Texto de mensaje
+        message_text = "GRACIAS POR LA MEJORA"
+        message_bbox = draw.textbbox((0, 0), message_text, font=title_font)
+        message_width = message_bbox[2] - message_bbox[0]
+        draw.text(((width - message_width) // 2, 380), message_text, fill='#ffd700', font=title_font)
+        
+        # Texto de conteo de boosts
+        boost_text = f"AHORA EL SERVER TIENE {boost_count} MEJORAS"
+        boost_bbox = draw.textbbox((0, 0), boost_text, font=text_font)
+        boost_width = boost_bbox[2] - boost_bbox[0]
+        draw.text(((width - boost_width) // 2, 430), boost_text, fill='#9b59b6', font=text_font)
+        
+        # Texto inferior
+        bottom_text = "¡BOOSTEA AHORA! Y FORMA PARTE DEL CRECIMIENTO"
+        bottom_bbox = draw.textbbox((0, 0), bottom_text, font=small_font)
+        bottom_width = bottom_bbox[2] - bottom_bbox[0]
+        draw.text(((width - bottom_width) // 2, 520), bottom_text, fill='#e91e63', font=small_font)
+        
+        # Guardar imagen en memoria
+        img_byte_arr = io.BytesIO()
+        image.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        return img_byte_arr
+    except Exception as e:
+        logger.error(f'Error al crear imagen de boost: {e}')
+        return None
+
+# Función para enviar imagen personalizada de boost
+async def send_boost_image_announcement(member, boost_count):
+    """Envía una imagen personalizada cuando un usuario boostea el servidor"""
+    try:
+        # Configurar canal de boosts
+        boost_channel_id = get_server_setting(member.guild.id, 'boost_channel')
+        if not boost_channel_id:
+            logger.warning('Canal de boosts no configurado')
+            return
+        
+        channel = bot.get_channel(boost_channel_id)
+        if not channel:
+            logger.warning('Canal de boosts no encontrado')
+            return
+        
+        # Generar imagen personalizada
+        user_avatar_url = member.display_avatar.url
+        user_name = member.name
+        user_tag = member.discriminator
+        
+        image_bytes = await create_boost_image(user_avatar_url, user_name, user_tag, boost_count)
+        
+        if image_bytes:
+            # Crear archivo de imagen
+            image_file = discord.File(image_bytes, filename='boost_announcement.png')
+            
+            # Crear embed con la imagen
+            embed = discord.Embed(
+                title='🚀 ¡NUEVO BOOSTER EN EL SERVIDOR!',
+                description=f'¡{member.mention} gracias por boostear el servidor!',
+                color=0xFF69B4
+            )
+            
+            embed.add_field(name='📊 Total boosts', value=str(boost_count), inline=True)
+            embed.add_field(name='🎉 Usuario', value=member.name, inline=True)
+            embed.set_image(url='attachment://boost_announcement.png')
+            embed.set_footer(text=f'Boost activado en {get_formatted_time(include_date=True)}')
+            
+            await channel.send(embed=embed, file=image_file)
+            logger.info(f'Imagen de boost enviada para usuario {member.name} en servidor {member.guild.name}')
+        
+    except Exception as e:
+        logger.error(f'Error al enviar imagen de boost: {e}')
+
+# Función para enviar anuncio de boost
+async def send_boost_announcement(guild, boost_count):
+    """Envía un anuncio cuando alguien boostea el servidor"""
+    try:
+        # Configurar canal de boosts
+        boost_channel_id = get_server_setting(guild.id, 'boost_channel')
+        if not boost_channel_id:
+            logger.warning('Canal de boosts no configurado')
+            return
+        
+        channel = bot.get_channel(boost_channel_id)
+        if not channel:
+            logger.warning('Canal de boosts no encontrado')
+            return
+        
+        # Intentar obtener el usuario que boosteó (esto es limitado por la API de Discord)
+        # Como no podemos obtener directamente quién boosteó, mostramos un mensaje general
+        embed = discord.Embed(
+            title='🚀 ¡NUEVO BOOST EN EL SERVIDOR!',
+            description=f'¡Gracias por boostear el servidor! Ahora tenemos **{boost_count} boosts**',
+            color=0xFF69B4
+        )
+        
+        embed.add_field(name='📊 Nivel actual', value=str(guild.premium_subscription_level), inline=True)
+        embed.add_field(name='💎 Total boosts', value=str(boost_count), inline=True)
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        embed.set_footer(text=f'Boost activado en {get_formatted_time(include_date=True)}')
+        
+        await channel.send(embed=embed)
+        logger.info(f'Anuncio de boost enviado a servidor {guild.name}')
+        
+    except Exception as e:
+        logger.error(f'Error al enviar anuncio de boost: {e}')
+
 # Evento de creación de hilo
 @bot.event
 async def on_thread_create(thread):
@@ -2524,7 +2748,7 @@ class HelpView(discord.ui.View):
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members, /bot_update', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members, /bot_update, /config_boost_channel', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel, /create_stats_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
@@ -2546,7 +2770,7 @@ class HelpView(discord.ui.View):
         elif category == 'tickets':
             embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_panel_channel - Configura canal del panel\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal configurado\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones\n/bot_update - Envía anuncio de actualización del bot', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones\n/bot_update - Envía anuncio de actualización del bot\n/config_boost_channel - Configura el canal de anuncios de boosts', inline=False)
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
         elif category == 'configuracion':
@@ -4067,6 +4291,15 @@ async def create_ranking(interaction: discord.Interaction):
 async def update_ranking_command(interaction: discord.Interaction):
     await update_ranking(interaction.guild.id)
     await interaction.response.send_message('✅ Ranking actualizado manualmente')
+
+@bot.tree.command(name='config_boost_channel', description='Configura el canal para anuncios de boosts')
+@discord.app_commands.describe(channel='Canal donde se enviarán los anuncios de boosts')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def config_boost_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    set_server_setting(interaction.guild.id, 'boost_channel', channel.id)
+    save_data()
+    await interaction.response.send_message(f'✅ Canal de boosts configurado: {channel.mention}', ephemeral=True)
+    print(f'[Config] Canal de boosts configurado en servidor {interaction.guild.name}: {channel.name} (ID: {channel.id})')
 
 @bot.tree.command(name='config_announcement_channel', description='Configura el canal para anuncios del servidor')
 @discord.app_commands.describe(channel='Canal para anuncios')
