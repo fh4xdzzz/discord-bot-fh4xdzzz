@@ -4352,6 +4352,9 @@ async def update_ranking_command(interaction: discord.Interaction):
 async def test_boost(interaction: discord.Interaction):
     """Comando de prueba para probar el sistema de boosts"""
     try:
+        # Usar respuesta diferida para operaciones largas
+        await interaction.response.defer(thinking=True)
+        
         # Usar al usuario que ejecuta el comando como "booster" de prueba
         member = interaction.user
         boost_count = interaction.guild.premium_subscription_count
@@ -4379,14 +4382,14 @@ async def test_boost(interaction: discord.Interaction):
             embed.set_image(url='attachment://boost_test.png')
             embed.set_footer(text=f'Prueba generada en {get_formatted_time(include_date=True)}')
             
-            await interaction.response.send_message(embed=embed, file=image_file)
+            await interaction.followup.send(embed=embed, file=image_file)
             logger.info(f'Prueba de boost generada para usuario {member.name} en servidor {interaction.guild.name}')
         else:
-            await interaction.response.send_message('❌ Error al generar la imagen de prueba', ephemeral=True)
+            await interaction.followup.send('❌ Error al generar la imagen de prueba', ephemeral=True)
             
     except Exception as e:
         logger.error(f'Error en prueba de boost: {e}')
-        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
+        await interaction.followup.send(f'❌ Error: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_boost_channel', description='Configura el canal para anuncios de boosts')
 @discord.app_commands.describe(channel='Canal donde se enviarán los anuncios de boosts')
