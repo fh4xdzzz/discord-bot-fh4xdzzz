@@ -1,0 +1,68 @@
+BOOST_BACKGROUND_PROMPT = """
+Create a premium Discord server boost promotional background.
+
+CANVAS:
+- 16:9 landscape composition
+- Designed specifically for a 1920x1080 final banner
+- Professional gaming advertisement
+- High-end cyberpunk aesthetic
+
+IMPORTANT:
+DO NOT GENERATE ANY TEXT.
+DO NOT GENERATE LETTERS.
+DO NOT GENERATE WORDS.
+DO NOT GENERATE NUMBERS.
+Leave clean empty areas where text can be added later with Python.
+
+VISUAL STYLE:
+- Dark black and deep purple background
+- Electric purple neon
+- Futuristic cyberpunk atmosphere
+- Purple lightning
+- Glowing particles
+- Energy effects
+- Floating crystals
+- Premium Discord boost aesthetic
+- Cinematic lighting
+- High contrast
+- Professional gaming graphics
+- Ultra detailed
+- 3D effects
+
+COMPOSITION:
+
+LEFT SIDE:
+A futuristic gaming mascot/character wearing:
+- dark hoodie
+- gaming headphones
+- futuristic mask/face
+- purple neon lighting
+- premium gaming aesthetic
+
+CENTER:
+Leave a large clean dark area for the main title.
+
+RIGHT SIDE:
+Place a large glowing Discord Boost crystal.
+The crystal should emit purple energy and light.
+
+BACKGROUND:
+- Galaxy/cyberpunk environment
+- Purple smoke
+- Lightning
+- Energy particles
+- Floating geometric elements
+- Subtle technological HUD elements
+
+DESIGN:
+The composition must have clear visual hierarchy.
+Do not overcrowd the center.
+Leave enough negative space for text.
+Make it look like an official premium Discord server advertisement.
+
+NO TEXT AT ALL.
+NO LOGOS WITH TEXT.
+NO WATERMARKS.
+
+The final image will have all typography added programmatically afterward.
+"""
