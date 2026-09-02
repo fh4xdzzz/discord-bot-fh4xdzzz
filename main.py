@@ -2764,7 +2764,7 @@ class HelpView(discord.ui.View):
 
             embed.add_field(name='🎉 Sorteos', value='/giveaway_create, /giveaway_end, /giveaway_reroll, /giveaway_list, /giveaway_config', inline=False)
             embed.add_field(name='🎫 Tickets', value='/ticket_channel, /ticket_panel_channel, /ticket_create_config, /ticket_send, /ticket_search, /ticket_stats', inline=False)
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members, /bot_update, /config_boost_channel', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel, /config_notification_role, /config_announcement_channel, /send_announcement, /notify_members, /bot_update, /config_boost_channel, /test_boost', inline=False)
             embed.add_field(name='📺 Streams', value='/config_stream_channel, /add_streamer, /remove_streamer, /check_streamer', inline=False)
             embed.add_field(name='⚙️ Configuración', value='/config_level_channel, /config_welcome_channel, /config_show, /config_log_channel, /create_stats_channel', inline=False)
             embed.add_field(name='🔒 Filtro de Palabras', value='/config_add_banned_word, /config_remove_banned_word', inline=False)
@@ -2786,7 +2786,7 @@ class HelpView(discord.ui.View):
         elif category == 'tickets':
             embed.add_field(name='🎫 Tickets', value='/ticket_channel - Configura categoría de tickets\n/ticket_panel_channel - Configura canal del panel\n/ticket_create_config - Crea configuración del panel\n/ticket_send - Envía panel al canal configurado\n/ticket_search - Busca tickets por criterios\n/ticket_stats - Muestra estadísticas del sistema', inline=False)
         elif category == 'notificaciones':
-            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones\n/bot_update - Envía anuncio de actualización del bot\n/config_boost_channel - Configura el canal de anuncios de boosts', inline=False)
+            embed.add_field(name='🔔 Notificaciones', value='/config_notifications_channel - Configura el canal de notificaciones\n/config_notification_role - Configura el rol para notificaciones\n/config_announcement_channel - Configura el canal de anuncios\n/send_announcement - Envía un anuncio al canal de anuncios\n/notify_members - Envía una notificación al canal de notificaciones\n/bot_update - Envía anuncio de actualización del bot\n/config_boost_channel - Configura el canal de anuncios de boosts\n/test_boost - Prueba el sistema de boosts con tu usuario', inline=False)
         elif category == 'streams':
             embed.add_field(name='📺 Streams', value='/config_stream_channel - Configura el canal de streams\n/add_streamer - Agrega un streamer\n/remove_streamer - Elimina un streamer\n/check_streamer - Verifica el estado de un streamer', inline=False)
         elif category == 'configuracion':
@@ -4307,6 +4307,47 @@ async def create_ranking(interaction: discord.Interaction):
 async def update_ranking_command(interaction: discord.Interaction):
     await update_ranking(interaction.guild.id)
     await interaction.response.send_message('✅ Ranking actualizado manualmente')
+
+@bot.tree.command(name='test_boost', description='Prueba el sistema de boosts con tu usuario')
+@discord.app_commands.checks.has_permissions(administrator=True)
+async def test_boost(interaction: discord.Interaction):
+    """Comando de prueba para probar el sistema de boosts"""
+    try:
+        # Usar al usuario que ejecuta el comando como "booster" de prueba
+        member = interaction.user
+        boost_count = interaction.guild.premium_subscription_count
+        
+        # Generar imagen de prueba
+        user_avatar_url = member.display_avatar.url
+        user_name = member.name
+        user_tag = member.discriminator
+        
+        image_bytes = await create_boost_image(user_avatar_url, user_name, user_tag, boost_count)
+        
+        if image_bytes:
+            # Crear archivo de imagen
+            image_file = discord.File(image_bytes, filename='boost_test.png')
+            
+            # Crear embed con la imagen
+            embed = discord.Embed(
+                title='🧪 PRUEBA DE SISTEMA DE BOOSTS',
+                description=f'Prueba generada para {member.mention}',
+                color=0xFF69B4
+            )
+            
+            embed.add_field(name='📊 Total boosts (actual)', value=str(boost_count), inline=True)
+            embed.add_field(name='🎉 Usuario de prueba', value=member.name, inline=True)
+            embed.set_image(url='attachment://boost_test.png')
+            embed.set_footer(text=f'Prueba generada en {get_formatted_time(include_date=True)}')
+            
+            await interaction.response.send_message(embed=embed, file=image_file)
+            logger.info(f'Prueba de boost generada para usuario {member.name} en servidor {interaction.guild.name}')
+        else:
+            await interaction.response.send_message('❌ Error al generar la imagen de prueba', ephemeral=True)
+            
+    except Exception as e:
+        logger.error(f'Error en prueba de boost: {e}')
+        await interaction.response.send_message(f'❌ Error: {e}', ephemeral=True)
 
 @bot.tree.command(name='config_boost_channel', description='Configura el canal para anuncios de boosts')
 @discord.app_commands.describe(channel='Canal donde se enviarán los anuncios de boosts')
