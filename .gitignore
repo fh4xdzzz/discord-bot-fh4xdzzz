@@ -52,3 +52,6 @@ lavalink/
 # Archivos del sistema
 .DS_Store
 Thumbs.db
+
+# Archivos de imágenes personalizadas (opcional)
+assets/boost_background.png

@@ -2463,9 +2463,25 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
         avatar = Image.open(io.BytesIO(response.content))
         avatar = avatar.resize((200, 200))
         
-        # Crear imagen base (fondo oscuro con acentos púrpura)
-        width, height = 800, 600
-        image = Image.new('RGB', (width, height), color='#1a1a2e')
+        # Intentar cargar imagen de fondo personalizada
+        background_path = 'assets/boost_background.png'
+        if os.path.exists(background_path):
+            image = Image.open(background_path).convert('RGB')
+            image = image.resize((800, 600))
+        else:
+            # Fallback: Crear imagen base (fondo oscuro con acentos púrpura)
+            width, height = 800, 600
+            image = Image.new('RGB', (width, height), color='#1a1a2e')
+            draw = ImageDraw.Draw(image)
+            
+            # Gradiente de fondo (simulado con rectángulos)
+            for i in range(height):
+                color_intensity = int(26 + (i / height) * 30)
+                draw.rectangle([(0, i), (width, i+1)], fill=(color_intensity, color_intensity, color_intensity + 20)])
+            
+            # Borde púrpura brillante
+            draw.rectangle([(10, 10), (width-10, height-10)], outline='#9b59b6', width=3)
+        
         draw = ImageDraw.Draw(image)
         
         # Gradiente de fondo (simulado con rectángulos)
