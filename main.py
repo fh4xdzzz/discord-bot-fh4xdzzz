@@ -2470,6 +2470,7 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
         if os.path.exists(background_path):
             image = Image.open(background_path).convert('RGB')
             image = image.resize((width, height))
+            draw = ImageDraw.Draw(image)
         else:
             # Fallback: Crear imagen base (fondo oscuro con acentos púrpura)
             image = Image.new('RGB', (width, height), color='#1a1a2e')
@@ -2478,14 +2479,10 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             # Gradiente de fondo (simulado con rectángulos)
             for i in range(height):
                 color_intensity = int(26 + (i / height) * 30)
-                draw.rectangle([(0, i), (width, i+1)], fill=(color_intensity, color_intensity, color_intensity + 20)])
+                draw.rectangle([(0, i), (width, i+1)], fill=(color_intensity, color_intensity, color_intensity + 20))
             
             # Borde púrpura brillante
             draw.rectangle([(10, 10), (width-10, height-10)], outline='#9b59b6', width=3)
-        
-        draw = ImageDraw.Draw(image)
-            draw.rectangle([(0, i), (width, i+1)], fill=(color_intensity, color_intensity, color_intensity + 20))
-
         
         # Dibujar círculo para el avatar
         avatar_x, avatar_y = width // 2 - 100, height // 2 - 120
