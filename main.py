@@ -4489,12 +4489,10 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         return
 
     try:
-        # Enviar mensaje privado al usuario en lugar de mensaje público
-        user = interaction.user
-        
+        # Enviar mensaje al canal configurado
         embed = discord.Embed(
             title='🔒 VERIFICACIÓN REQUERIDA',
-            description=f'¡Hola {user.mention}! Reacciona con ✅ para obtener acceso completo al servidor',
+            description='¡Hola! Reacciona con ✅ para obtener acceso completo al servidor',
             color=0xFF6B6B
         )
 
@@ -4506,30 +4504,23 @@ async def create_verification_message(interaction: discord.Interaction, role: di
         embed.set_footer(text='Sistema de verificación automática - Reacciona para verificar')
         embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
 
-        # Enviar mensaje privado al usuario
-        try:
-            view = VerificationView(str(channel.id), None)
-            message = await user.send(embed=embed, view=view)
-            
-            # Actualizar la vista con el ID del mensaje DM
-            view.message_id = str(message.id)
-            updated_view = VerificationView(str(channel.id), str(message.id))
-            await message.edit(view=updated_view)
-            bot.add_view(updated_view)
-            
-            # Guardar configuración
-            data['servers'][server_id]['verification_dm_message_id'] = message.id
-            save_data()
-            
-            await interaction.response.send_message(f'✅ Mensaje de verificación enviado a {user.mention} por DM', ephemeral=True)
-        except discord.Forbidden:
-            await interaction.response.send_message('❌ No pude enviar mensaje privado. El usuario tiene DMs desactivados.', ephemeral=True)
-            return
+        # Enviar mensaje al canal configurado
+        view = VerificationView(str(channel.id), None)
+        message = await channel.send(embed=embed, view=view)
+        
+        # Actualizar la vista con el ID del mensaje del canal
+        view.message_id = str(message.id)
+        updated_view = VerificationView(str(channel.id), str(message.id))
+        await message.edit(view=updated_view)
+        bot.add_view(updated_view)
+        
+        # Guardar configuración
+        data['servers'][server_id]['verification_message_id'] = message.id
         data['servers'][server_id]['verification_channel'] = channel.id
         save_data()
-
+        
         await interaction.response.send_message(f'✅ Mensaje de verificación creado en {channel.mention}')
-        print(f'[Verificación] Mensaje creado en servidor {interaction.guild.name} (ID: {message.id})')
+        print(f'[Verificación] Mensaje creado en servidor {interaction.guild.name} canal {channel.name} (ID: {message.id})')
     except Exception as e:
         await interaction.response.send_message(f'❌ Error al crear mensaje de verificación: {e}', ephemeral=True)
         print(f'[Verificación] Error al crear mensaje: {e}')
