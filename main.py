@@ -2469,8 +2469,9 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
         
         if os.path.exists(background_path):
             image = Image.open(background_path).convert('RGB')
-            image = image.resize((width, height))
+            image = image.resize((width, height), Image.Resampling.LANCZOS)
             draw = ImageDraw.Draw(image)
+            logger.info('Imagen de fondo cargada exitosamente')
         else:
             # Fallback: Crear imagen base (fondo oscuro con acentos púrpura)
             image = Image.new('RGB', (width, height), color='#1a1a2e')
@@ -2483,13 +2484,28 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             
             # Borde púrpura brillante
             draw.rectangle([(10, 10), (width-10, height-10)], outline='#9b59b6', width=3)
+            logger.warning('Imagen de fondo no encontrada, usando fallback')
+        
+        # Función helper para dibujar texto con contorno/sombra para mejor legibilidad
+        def draw_text_with_outline(text, position, font, fill_color, outline_color='#000000', outline_width=2):
+            """Dibuja texto con contorno para mejor legibilidad sobre fondos complejos"""
+            x, y = position
+            # Dibujar contorno (sombra)
+            for offset_x in range(-outline_width, outline_width + 1):
+                for offset_y in range(-outline_width, outline_width + 1):
+                    if offset_x != 0 or offset_y != 0:
+                        draw.text((x + offset_x, y + offset_y), text, font=font, fill=outline_color)
+            # Dibujar texto principal
+            draw.text((x, y), text, font=font, fill=fill_color)
         
         # Dibujar círculo para el avatar (más grande y centrado como en la imagen de referencia)
         avatar_x, avatar_y = width // 2 - 120, height // 2 - 140
-        draw.ellipse([avatar_x, avatar_y, avatar_x + 240, avatar_y + 240], outline='#9b59b6', width=6)
+        # Contorno del círculo del avatar con múltiples capas para efecto brillante
+        draw.ellipse([avatar_x - 4, avatar_y - 4, avatar_x + 244, avatar_y + 244], outline='#9b59b6', width=8)
+        draw.ellipse([avatar_x - 2, avatar_y - 2, avatar_x + 242, avatar_y + 242], outline='#e056fd', width=4)
         
         # Pegar avatar en el centro (más grande)
-        avatar = avatar.resize((240, 240))
+        avatar = avatar.resize((240, 240), Image.Resampling.LANCZOS)
         avatar_mask = Image.new('L', (240, 240), 0)
         avatar_mask_draw = ImageDraw.Draw(avatar_mask)
         avatar_mask_draw.ellipse([(0, 0), (240, 240)], fill=255)
@@ -2517,13 +2533,13 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
                     if not title_font:
                         title_font = ImageFont.truetype(font_path, 45)
                     if not subtitle_font:
-                        subtitle_font = ImageFont.truetype(font_path, 35)
+                        subtitle_font = ImageFont.truetype(font_path, 38)
                     if not username_font:
-                        username_font = ImageFont.truetype(font_path, 28)
+                        username_font = ImageFont.truetype(font_path, 30)
                     if not message_font:
-                        message_font = ImageFont.truetype(font_path, 50)
+                        message_font = ImageFont.truetype(font_path, 52)
                     if not small_font:
-                        small_font = ImageFont.truetype(font_path, 20)
+                        small_font = ImageFont.truetype(font_path, 22)
                     if title_font and subtitle_font and username_font and message_font and small_font:
                         break
                 except:
@@ -2546,46 +2562,61 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             small_font = ImageFont.load_default()
         
         # Título "DISCORD BOT" (posicionado más arriba como en la imagen de referencia)
+        # Color púrpura claro con contorno oscuro para legibilidad
         title_text = "DISCORD BOT"
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_width = title_bbox[2] - title_bbox[0]
-        draw.text(((width - title_width) // 2, 20), title_text, fill='#9b59b6', font=title_font)
+        title_x = (width - title_width) // 2
+        draw_text_with_outline(title_text, (title_x, 15), title_font, '#c39bd3', '#000000', 3)
         
         # Subtítulo "BOOST SERVER" (en rojo brillante como en la imagen)
         subtitle_text = "BOOST SERVER"
         subtitle_bbox = draw.textbbox((0, 0), subtitle_text, font=subtitle_font)
         subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
-        draw.text(((width - subtitle_width) // 2, 70), subtitle_text, fill='#ff0000', font=subtitle_font)
+        subtitle_x = (width - subtitle_width) // 2
+        draw_text_with_outline(subtitle_text, (subtitle_x, 65), subtitle_font, '#ff4757', '#000000', 3)
         
         # Texto de nombre de usuario (debajo del avatar)
-        username_text = f"¡{user_name} @{user_tag}"
+        username_text = f"@{user_tag}"
         username_bbox = draw.textbbox((0, 0), username_text, font=username_font)
         username_width = username_bbox[2] - username_bbox[0]
-        draw.text(((width - username_width) // 2, 380), username_text, fill='#ffffff', font=username_font)
+        username_x = (width - username_width) // 2
+        draw_text_with_outline(username_text, (username_x, 385), username_font, '#ffffff', '#000000', 3)
+        
+        # Nombre del usuario más pequeño
+        name_text = user_name
+        name_bbox = draw.textbbox((0, 0), name_text, font=username_font)
+        name_width = name_bbox[2] - name_bbox[0]
+        name_x = (width - name_width) // 2
+        draw_text_with_outline(name_text, (name_x, 355), username_font, '#ffffff', '#000000', 3)
         
         # Texto de mensaje principal (en amarillo grande como en la imagen)
         message_text = "GRACIAS POR LA MEJORA"
         message_bbox = draw.textbbox((0, 0), message_text, font=message_font)
         message_width = message_bbox[2] - message_bbox[0]
-        draw.text(((width - message_width) // 2, 420), message_text, fill='#ffd700', font=message_font)
+        message_x = (width - message_width) // 2
+        draw_text_with_outline(message_text, (message_x, 425), message_font, '#ffd700', '#000000', 4)
         
         # Texto de conteo de boosts (en blanco como en la imagen)
         boost_text = f"AHORA EL SERVER TIENE {boost_count} MEJORAS"
         boost_bbox = draw.textbbox((0, 0), boost_text, font=username_font)
         boost_width = boost_bbox[2] - boost_bbox[0]
-        draw.text(((width - boost_width) // 2, 480), boost_text, fill='#ffffff', font=username_font)
+        boost_x = (width - boost_width) // 2
+        draw_text_with_outline(boost_text, (boost_x, 485), username_font, '#ffffff', '#000000', 3)
         
         # Texto inferior (en rojo como en la imagen)
         bottom_text = "¡BOOSTEA AHORA! Y FORMA PARTE DEL CRECIMIENTO"
         bottom_bbox = draw.textbbox((0, 0), bottom_text, font=small_font)
         bottom_width = bottom_bbox[2] - bottom_bbox[0]
-        draw.text(((width - bottom_width) // 2, 530), bottom_text, fill='#ff0000', font=small_font)
+        bottom_x = (width - bottom_width) // 2
+        draw_text_with_outline(bottom_text, (bottom_x, 535), small_font, '#ff4757', '#000000', 2)
         
         # Guardar imagen en memoria
         img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
+        image.save(img_byte_arr, format='PNG', quality=95)
         img_byte_arr.seek(0)
         
+        logger.info(f'Imagen de boost creada exitosamente para {user_name}')
         return img_byte_arr
     except Exception as e:
         logger.error(f'Error al crear imagen de boost: {e}')
