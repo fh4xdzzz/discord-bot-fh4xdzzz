@@ -2465,7 +2465,7 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
         
         # Intentar cargar imagen de fondo personalizada
         background_path = 'assets/boost_background.png'
-        width, height = 800, 600
+        width, height = 1920, 1080
         
         if os.path.exists(background_path):
             image = Image.open(background_path).convert('RGB')
@@ -2498,17 +2498,17 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             # Dibujar texto principal
             draw.text((x, y), text, font=font, fill=fill_color)
         
-        # Dibujar círculo para el avatar (más grande y centrado como en la imagen de referencia)
-        avatar_x, avatar_y = width // 2 - 120, height // 2 - 140
+        # Dibujar círculo para el avatar (ajustado para 1920x1080)
+        avatar_x, avatar_y = width // 2 - 180, height // 2 - 200
         # Contorno del círculo del avatar con múltiples capas para efecto brillante
-        draw.ellipse([avatar_x - 4, avatar_y - 4, avatar_x + 244, avatar_y + 244], outline='#9b59b6', width=8)
-        draw.ellipse([avatar_x - 2, avatar_y - 2, avatar_x + 242, avatar_y + 242], outline='#e056fd', width=4)
+        draw.ellipse([avatar_x - 6, avatar_y - 6, avatar_x + 366, avatar_y + 366], outline='#9b59b6', width=12)
+        draw.ellipse([avatar_x - 3, avatar_y - 3, avatar_x + 363, avatar_y + 363], outline='#e056fd', width=6)
         
-        # Pegar avatar en el centro (más grande)
-        avatar = avatar.resize((240, 240), Image.Resampling.LANCZOS)
-        avatar_mask = Image.new('L', (240, 240), 0)
+        # Pegar avatar en el centro (ajustado para 1920x1080)
+        avatar = avatar.resize((360, 360), Image.Resampling.LANCZOS)
+        avatar_mask = Image.new('L', (360, 360), 0)
         avatar_mask_draw = ImageDraw.Draw(avatar_mask)
-        avatar_mask_draw.ellipse([(0, 0), (240, 240)], fill=255)
+        avatar_mask_draw.ellipse([(0, 0), (360, 360)], fill=255)
         avatar.putalpha(avatar_mask)
         image.paste(avatar, (avatar_x, avatar_y), avatar)
         
@@ -2531,15 +2531,15 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             for font_path in font_paths:
                 try:
                     if not title_font:
-                        title_font = ImageFont.truetype(font_path, 45)
+                        title_font = ImageFont.truetype(font_path, 80)
                     if not subtitle_font:
-                        subtitle_font = ImageFont.truetype(font_path, 38)
+                        subtitle_font = ImageFont.truetype(font_path, 65)
                     if not username_font:
-                        username_font = ImageFont.truetype(font_path, 30)
+                        username_font = ImageFont.truetype(font_path, 50)
                     if not message_font:
-                        message_font = ImageFont.truetype(font_path, 52)
+                        message_font = ImageFont.truetype(font_path, 90)
                     if not small_font:
-                        small_font = ImageFont.truetype(font_path, 22)
+                        small_font = ImageFont.truetype(font_path, 35)
                     if title_font and subtitle_font and username_font and message_font and small_font:
                         break
                 except:
@@ -2561,20 +2561,27 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
             message_font = ImageFont.load_default()
             small_font = ImageFont.load_default()
         
-        # Título "DISCORD BOT" (posicionado más arriba como en la imagen de referencia)
+        # Título "DISCORD BOT" (posicionado para 1920x1080)
         # Color púrpura claro con contorno oscuro para legibilidad
         title_text = "DISCORD BOT"
         title_bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_width = title_bbox[2] - title_bbox[0]
         title_x = (width - title_width) // 2
-        draw_text_with_outline(title_text, (title_x, 15), title_font, '#c39bd3', '#000000', 3)
+        draw_text_with_outline(title_text, (title_x, 30), title_font, '#c39bd3', '#000000', 4)
         
         # Subtítulo "BOOST SERVER" (en rojo brillante como en la imagen)
         subtitle_text = "BOOST SERVER"
         subtitle_bbox = draw.textbbox((0, 0), subtitle_text, font=subtitle_font)
         subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
         subtitle_x = (width - subtitle_width) // 2
-        draw_text_with_outline(subtitle_text, (subtitle_x, 65), subtitle_font, '#ff4757', '#000000', 3)
+        draw_text_with_outline(subtitle_text, (subtitle_x, 120), subtitle_font, '#ff4757', '#000000', 4)
+        
+        # Mensaje de agradecimiento (arriba del avatar)
+        thanks_text = "¡GRACIAS POR BOOSTEAR!"
+        thanks_bbox = draw.textbbox((0, 0), thanks_text, font=username_font)
+        thanks_width = thanks_bbox[2] - thanks_bbox[0]
+        thanks_x = (width - thanks_width) // 2
+        draw_text_with_outline(thanks_text, (thanks_x, 650), username_font, '#ffd700', '#000000', 4)
         
         # Texto de nombre de usuario (debajo del avatar)
         # Usar el username completo o formato clásico si el discriminator no es 0
@@ -2586,35 +2593,28 @@ async def create_boost_image(user_avatar_url, user_name, user_tag, boost_count):
         username_bbox = draw.textbbox((0, 0), username_text, font=username_font)
         username_width = username_bbox[2] - username_bbox[0]
         username_x = (width - username_width) // 2
-        draw_text_with_outline(username_text, (username_x, 385), username_font, '#ffffff', '#000000', 3)
-        
-        # Mensaje de agradecimiento en lugar del nombre duplicado
-        thanks_text = "¡GRACIAS POR BOOSTEAR!"
-        thanks_bbox = draw.textbbox((0, 0), thanks_text, font=username_font)
-        thanks_width = thanks_bbox[2] - thanks_bbox[0]
-        thanks_x = (width - thanks_width) // 2
-        draw_text_with_outline(thanks_text, (thanks_x, 355), username_font, '#ffd700', '#000000', 3)
+        draw_text_with_outline(username_text, (username_x, 720), username_font, '#ffffff', '#000000', 4)
         
         # Texto de mensaje principal (en amarillo grande como en la imagen)
         message_text = "GRACIAS POR LA MEJORA"
         message_bbox = draw.textbbox((0, 0), message_text, font=message_font)
         message_width = message_bbox[2] - message_bbox[0]
         message_x = (width - message_width) // 2
-        draw_text_with_outline(message_text, (message_x, 425), message_font, '#ffd700', '#000000', 4)
+        draw_text_with_outline(message_text, (message_x, 800), message_font, '#ffd700', '#000000', 6)
         
         # Texto de conteo de boosts (en blanco como en la imagen)
         boost_text = f"AHORA EL SERVER TIENE {boost_count} MEJORAS"
         boost_bbox = draw.textbbox((0, 0), boost_text, font=username_font)
         boost_width = boost_bbox[2] - boost_bbox[0]
         boost_x = (width - boost_width) // 2
-        draw_text_with_outline(boost_text, (boost_x, 485), username_font, '#ffffff', '#000000', 3)
+        draw_text_with_outline(boost_text, (boost_x, 900), username_font, '#ffffff', '#000000', 4)
         
         # Texto inferior (en rojo como en la imagen)
         bottom_text = "¡BOOSTEA AHORA! Y FORMA PARTE DEL CRECIMIENTO"
         bottom_bbox = draw.textbbox((0, 0), bottom_text, font=small_font)
         bottom_width = bottom_bbox[2] - bottom_bbox[0]
         bottom_x = (width - bottom_width) // 2
-        draw_text_with_outline(bottom_text, (bottom_x, 535), small_font, '#ff4757', '#000000', 2)
+        draw_text_with_outline(bottom_text, (bottom_x, 1000), small_font, '#ff4757', '#000000', 3)
         
         # Guardar imagen en memoria
         img_byte_arr = io.BytesIO()
